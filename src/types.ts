@@ -1,0 +1,2 @@
+/** Timestamp */
+export class Timestamp{}
