@@ -1,2 +1,0 @@
-/** Timestamp */
-export class Timestamp{}

@@ -15,5 +15,8 @@
     "ts-node": "^9.1.1",
     "ts-transform-import-path-rewrite": "^0.3.0",
     "typescript": "^4.2.4"
+  },
+  "dependencies": {
+    "graphql": "^15.5.0"
   }
 }
