@@ -1,5 +1,25 @@
-import { GraphQLEnumType, GraphQLScalarType } from "graphql";
-import { fieldSymb } from "symbols";
+import { buildSchema, GraphQLEnumType, GraphQLScalarType } from "graphql";
+import { fieldSymb } from "./symbols";
+
+/** Class type */
+interface classType extends Function{
+	[fieldSymb]?: Map<string, FieldArgSchema>
+};
+
+/** @private build schema */
+function _getBuiltSchema(target: any, schema: FieldSchema, propertyKey: string){
+	var constructor=  (typeof target === 'function'? target : target.constructor) as classType;
+	var parentConstructor= Reflect.getPrototypeOf(constructor) as classType;
+	var fields= constructor[fieldSymb] || (constructor[fieldSymb]= new Map<string, FieldArgSchema>())
+	var parentFields= parentConstructor[fieldSymb]
+	var builtSchema=  (schema as FieldSchema).build(fields.get(propertyKey), parentFields?.get(propertyKey));
+	//Add resolver
+	if(typeof target[propertyKey] === 'function')
+		builtSchema.resolve= target[propertyKey];
+	//set
+	fields.set(propertyKey, builtSchema);
+	return builtSchema;
+}
 
 /**
  * Generate fields
@@ -15,12 +35,18 @@ export function field(type: FieldDescType|RegExp, schema?: FieldSchema | string)
 		schema.type(type);
 	/** Apply */
 	return function(target: any, propertyKey: string, descriptor?: PropertyDescriptor){
-		type constType= {[fieldSymb]?: Map<string, FieldArgSchema>};
-		var constructor=  (typeof target === 'function'? target : target.constructor) as constType;
-		var parentConstructor= Reflect.getPrototypeOf(constructor) as constType;
-		var fields= constructor[fieldSymb] || (constructor[fieldSymb]= new Map<string, FieldArgSchema>())
-		var parentFields= parentConstructor[fieldSymb]
-		fields.set(propertyKey, (schema as FieldSchema).build(fields.get(propertyKey), parentFields?.get(propertyKey)))
+		_getBuiltSchema(target, schema as FieldSchema, propertyKey);
+	}
+}
+
+/** Argument */
+export function arg(docType: classType, comment?: string){
+	if(!docType[fieldSymb]) throw new Error(`Expected valid class with fields: ${docType}`);
+	var schema= new FieldSchema({arg: docType});
+	return function(target: any, propertyKey: string, parameterIndex: number){
+		if(parameterIndex!= 1) throw new Error(`Could use @arg on second argument only! at: ${propertyKey}`);
+		var buildSchema= _getBuiltSchema(target, schema as FieldSchema, propertyKey);
+		buildSchema.arg= docType;
 	}
 }
 
@@ -47,6 +73,12 @@ export interface FieldArgSchema{
 	gtErr?:		string
 	regex?:		RegExp
 	regexErr?:	string
+	/** Resolver */
+	resolve?:	Function
+	/** Arguments when method */
+	arg?:		classType
+	/** Default value, used for arguments */
+	default?:	any
 }
 
 const FIELD_DEFAULTS: FieldArgSchema= {
@@ -69,7 +101,12 @@ const FIELD_DEFAULTS: FieldArgSchema= {
 	gt:			undefined,
 	gtErr:		undefined,
 	regex:		undefined,
-	regexErr:	undefined
+	regexErr:	undefined,
+	resolve:	undefined,
+	/** Args when method */
+	arg:		undefined,
+	/** Default value */
+	default:	undefined
 }
 
 /** Field schema */
@@ -99,6 +136,11 @@ export class FieldSchema{
 	comment(comment: string){
 		this._.comment= comment;
 		return this;
+	}
+
+	/** Set default value */
+	default(value: any){
+		this._.default= value;
 	}
 
 	/** Deprecate field */
@@ -152,13 +194,20 @@ export class FieldSchema{
 	}
 
 	/** Build */
-	build(currentField:FieldArgSchema|undefined, parentField: FieldArgSchema|undefined){
+	build(currentField?:FieldArgSchema, parentField?: FieldArgSchema){
 		if(currentField)
-			Object.assign(currentField, this._)
+			_mergeObj(currentField, this._)
 		else
-			currentField= Object.assign({}, parentField, this._);
-		return currentField;
+			currentField= _mergeObj({}, parentField, this._);
+		return currentField!;
 	}
+}
+
+function _mergeObj(target: any, a?: any, b?: any){
+	var k;
+	if(a){ for(k in a) if(a[k]!=null) target[k]= a[k];}
+	if(b){ for(k in b) if(b[k]!=null) target[k]= b[k];}
+	return target;
 }
 
 /** Export methods */

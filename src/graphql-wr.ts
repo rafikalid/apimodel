@@ -1,94 +1,247 @@
-import { FieldArgSchema } from 'field';
-import { GraphQLBoolean, GraphQLEnumType, GraphQLFloat, GraphQLObjectType, GraphQLScalarType, GraphQLSchema, GraphQLString } from 'graphql';
-import {fieldSymb} from './symbols';
-/** Schema basic data */
-type ClassFields= {[fieldSymb]: Map<string, FieldArgSchema>, name: string};
-type SchemaType= {Query?: ClassFields, Mutation?: ClassFields}
+import { GraphQLBoolean, GraphQLEnumType, GraphQLFieldConfig, GraphQLFieldConfigArgumentMap, GraphQLFloat, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLString } from 'graphql';
+import { FieldArgSchema } from './field';
+import {DocSymb, fieldSymb} from './symbols';
 
+/** Basic types */
+export const Int= GraphQLInt
+export const Float= GraphQLFloat
+
+/** Schema basic data */
+interface ClassFields extends Function {
+	[fieldSymb]: Map<string, FieldArgSchema>,
+	[DocSymb]?:string
+}
+type SchemaType= {Query?: Function, Mutation?: Function}
+
+/**
+ * Graphql object type:
+ * ! Reformat the code when adding new entries
+ */
+enum graphQlObject{
+	TYPE,
+	INPUT
+}
+
+/** Map classes to it's definition */
+interface mapClassInterface{
+	typeFields?:	Record<string, any>, // map gqlType fields
+	gqlType?:	GraphQLObjectType, // Mapped object
+	inputFields?: Record<string, any>, // map gqlType fields
+	gqlInput?:	GraphQLInputObjectType // Mapped input
+}
+
+/**  */
+/** Create descriptor fields */
+function TYPE_QUERY(){}; // map only query
+function TYPE_MUTATION(){}; // Enable to map queries
+function _parseGraphQlType(fieldValue: FieldArgSchema, mapClasses: Map<Function, mapClassInterface>, typeOrInput: graphQlObject){
+	// Field type
+	var fieldType= fieldValue.type!
+	var targetFieldGql: GraphQLOutputType | GraphQLInputType;
+	var nextDescriptorFields;
+	var isNew= false;
+	//* Scalar or enum
+	if(fieldType instanceof GraphQLScalarType || fieldType instanceof GraphQLEnumType){
+		targetFieldGql= fieldType;
+	}
+	//* Doc input
+	else if((fieldType as ClassFields)[fieldSymb]){
+		// Next mapper
+		var mapperClazz= fieldType
+		if(mapperClazz.name === 'Query')			mapperClazz= TYPE_QUERY;
+		else if(mapperClazz.name === 'Mutation')	mapperClazz= TYPE_MUTATION;
+		// Next object descriptor
+		var nextDescriptor= mapClasses.get(mapperClazz);
+		if(!nextDescriptor){
+			nextDescriptor= {
+				typeFields:	undefined, // map gqlType fields
+				gqlType:	undefined, // Mapped object
+				inputFields: undefined, // map gqlType fields
+				gqlInput:	undefined // Mapped input
+			};
+			mapClasses.set(mapperClazz, nextDescriptor);
+		}
+		// next object fields
+		if(typeOrInput===graphQlObject.TYPE){
+			nextDescriptorFields= nextDescriptor.typeFields
+			if(!nextDescriptorFields){
+				isNew= true;
+				nextDescriptorFields= {};
+				nextDescriptor.typeFields= nextDescriptorFields;
+				nextDescriptor.gqlType= new GraphQLObjectType({
+					name: fieldType.name,
+					fields: nextDescriptorFields,
+					description: (fieldType as ClassFields)[DocSymb]
+				});
+			}
+			targetFieldGql= nextDescriptor.gqlType!;
+		} else {
+			nextDescriptorFields= nextDescriptor.inputFields
+			if(!nextDescriptorFields){
+				isNew= true;
+				nextDescriptorFields= {};
+				nextDescriptor.inputFields= nextDescriptorFields;
+				nextDescriptor.gqlInput= new GraphQLInputObjectType({
+					name: `${fieldType.name}Input`,
+					fields: nextDescriptorFields,
+					description: (fieldType as ClassFields)[DocSymb]
+				});
+			}
+			targetFieldGql= nextDescriptor.gqlInput!
+		}
+	}
+	else if(fieldType === Number)
+		targetFieldGql= GraphQLFloat;
+	else if(fieldType === String)
+		targetFieldGql= GraphQLString
+	else if(fieldType === Boolean)
+		targetFieldGql= GraphQLBoolean
+	else
+		throw `Illegal type: ${fieldType}`;
+	return {
+		targetFieldGql: targetFieldGql,
+		isNew: isNew
+	}
+}
 
 /** Generating graphql schema */
 export function makeGraphQLSchema(... args: SchemaType[]){
 	//* Prepare Queries and mutations
-	var q= [];
+	var q= [], qObj= [];
 	var i, len, arg;
+	var hasQuery= false;
+	var hasMutation= false;
 	for(i=0, len= args.length; i<len; i++){
 		arg= args[i];
-		if(arg.Query) q.push('type', arg.Query);
-		if(arg.Mutation) q.push('type', arg.Mutation);
+		if(arg.Query) {
+			q.push(graphQlObject.TYPE);
+			qObj.push(arg.Query);
+			hasQuery= true;
+		}
+		if(arg.Mutation) {
+			q.push(graphQlObject.TYPE);
+			qObj.push(arg.Mutation);
+			hasMutation= true;
+		}
 	}
 	if(q.length===0) throw new Error('No Query or Mutation found!');
 
 	// Go through queue
 	/** Map types to classes */
-	type objectTypeRecord= Record<string, any>
-	const mapClasses= new Map<string, objectTypeRecord>();
-	const mapClassesDef= new Map<string, GraphQLObjectType>();
-	// Map Query
-	var mQuery= {};
-	mapClasses.set('type Query', mQuery);
-	mapClassesDef.set('type Query', new GraphQLObjectType({
-		name: 'RootQueryType',
-		fields: mQuery
-	}));
-	//Map Mutation
-	var mMutation= {}
-	mapClasses.set('type Mutation', mMutation);
-	mapClassesDef.set('type Mutation', new GraphQLObjectType({
-		name: 'RootMutationType',
-		fields: mMutation
-	}));
+	const mapClasses: Map<Function, mapClassInterface>= new Map();
+	
+	/** Add basic mappers */
+	var mField;
+	if(hasQuery){
+		mField= {};
+		mapClasses.set(TYPE_QUERY, {
+			typeFields:	mField, // map gqlType fields
+			gqlType:	 new GraphQLObjectType({name: 'RootQueryType', fields: mField}), // Mapped object
+			inputFields: undefined, // map gqlType fields
+			gqlInput:	undefined // Mapped input
+		});
+	}
+	if(hasMutation){
+		mField= {};
+		mapClasses.set(TYPE_MUTATION, {
+			typeFields:	mField, // map gqlType fields
+			gqlType:	new GraphQLObjectType({name: 'RootMutationType', fields: mField}), // Mapped object
+			inputFields: undefined, // map gqlType fields
+			gqlInput:	undefined // Mapped input
+		});
+	}
 
 	/** Mark classes as visited */
-	const visitedClasses= new Set<ClassFields>();
-	i=0, len=1;
+	i=0, len= q.length;
 	while(i<len){
-		var keyword= q[i++] as 'string'; // "type" or "input"
-		var cl= q[i++] as ClassFields; // get current class
-		//* Ignore visited classes
-		if(visitedClasses.has(cl)) continue
-		visitedClasses.add(cl);
-		//* Get field descriptor
-		var key= `${keyword} ${cl.name}`;
-		var fieldDescriptor= mapClasses.get(key)
-		if(!fieldDescriptor) throw new Error(`Exprected field descriptor for: ${key}`);
-		//if(!fieldDescriptor) mapClasses.set(key, fieldDescriptor= {});
-		//* Get fields
-		var fields= cl[fieldSymb];
-		if(!fields) throw new Error(`Expected fields on class: ${cl.name}`);
-		//* Add fields
-		var fieldIt= fields.entries()
-		var entry= fieldIt.next()
-		while(!entry.done){
-			var [fieldKey, fieldValue]= entry.value;
-			if(Reflect.has(fieldDescriptor, fieldKey))
-				throw new Error(`Duplicate entry: ${key}::${fieldKey}`);
-			// add
-			var fieldType= fieldValue.type!
-			var fieldDesc: any
-			//* Scalar or enum
-			if(fieldType instanceof GraphQLScalarType || fieldType instanceof GraphQLEnumType){
-				// Nothing to do
+		// Get step data
+		var typeOrInput= q[i] as graphQlObject; // "type" or "input"
+		var clazz= qObj[i++] as ClassFields; // get current class
+		try {
+			// Get mapper
+			var mapperClazz: Function= clazz
+			if(mapperClazz.name === 'Query')			mapperClazz= TYPE_QUERY;
+			else if(mapperClazz.name === 'Mutation')	mapperClazz= TYPE_MUTATION;
+			//* Get field descriptor
+			var descriptor= mapClasses.get(mapperClazz)!;
+			var descriptorFields= typeOrInput===graphQlObject.TYPE ? descriptor.typeFields! : descriptor.inputFields!;
+			
+			//* Get fields
+			var fields= clazz[fieldSymb];
+			if(!fields) throw new Error(`Expected fields on class: ${clazz.name}`);
+			//* Add fields
+			var fieldIt= fields.entries();
+			while(true){
+				// Get next entry
+				var entry= fieldIt.next();
+				if(entry.done) break;
+				var [fieldKey, fieldValue]= entry.value;
+				// Check if ignored
+				if(typeOrInput === graphQlObject.TYPE){
+					if(!fieldValue.read) continue; // this field is write only
+				} else {
+					if(!fieldValue.write) continue; // this field is read only
+				}
+				// Check for duplicate field name
+				if(Reflect.has(descriptorFields, fieldKey))
+					throw new Error(`Duplicate entry: ${clazz.name}::${fieldKey}`);
+				// Get graphql type
+				var {targetFieldGql, isNew}= _parseGraphQlType(fieldValue, mapClasses, typeOrInput);
+				// Parse in next step
+				if(isNew){
+					q.push(typeOrInput);
+					qObj.push(fieldValue.type!);
+					++len;
+				}
+				// add arguments
+				var argV= fieldValue.arg;
+				var targetInputArg: GraphQLFieldConfigArgumentMap|undefined= undefined;
+				if(argV){
+					var argDescriptor= argV[fieldSymb];
+					if(!argDescriptor) throw new Error(`Illegal argument at ${fieldKey}: ${argV.name}`);
+					if(argDescriptor.size === 0) throw new Error(`Expected fields at ${fieldKey}: ${argV.name}`)
+					targetInputArg= {};
+					var argIt= argDescriptor.entries();
+					while(true){
+						var a= argIt.next()
+						if(a.done) break;
+						var [k, v]= a.value;
+						// Get graphql type
+						var {targetFieldGql: argFieldGql, isNew}= _parseGraphQlType(v, mapClasses, graphQlObject.INPUT);
+						// Parse in next step
+						if(isNew){
+							q.push(graphQlObject.INPUT);
+							qObj.push(v.type!);
+							++len;
+						}
+						
+						// Add arg
+						targetInputArg[k]= {
+							type:			argFieldGql as GraphQLInputType,
+							defaultValue:	v.default,
+							description:	v.comment
+						};
+					}
+				}
+
+				// Add field
+				descriptorFields[fieldKey]= {
+					type:				targetFieldGql,
+					args:				targetInputArg,
+					resolve:			fieldValue.resolve,
+					deprecationReason:	fieldValue.deprecated,
+					description:		fieldValue.comment
+				}
 			}
-			//* Doc input
-			else if((fieldType as any as ClassFields)[fieldSymb]){
-				// TODO
-			}
-			else if(fieldType === Number)
-				fieldType= GraphQLFloat;
-			else if(fieldType === String)
-				fieldType= GraphQLString
-			else if(fieldType === Boolean)
-				fieldType= GraphQLBoolean
-			else
-				throw new Error(`Illegal type for ${key}::${fieldKey}>> ${fieldType}`);
-			// Next
-			var entry= fieldIt.next()
+		} catch (error) {
+			if(typeof error === 'string')
+				throw new Error(`Error at ${clazz.name}::${fieldKey}>> ${error}`);
 		}
 	}
 	//* Return schema
 	return new GraphQLSchema({
-		query:	mapClassesDef.get('type Query'),
-		mutation: mapClassesDef.get('type Mutation')
+		query:		hasQuery ? mapClasses.get(TYPE_QUERY)!.gqlType : undefined,
+		mutation:	hasMutation ? mapClasses.get(TYPE_MUTATION)!.gqlType : undefined
 	});
 }
 

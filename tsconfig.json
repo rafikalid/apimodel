@@ -34,19 +34,20 @@
 	  /* Module Resolution Options */
 	  "moduleResolution": "node" /* Specify module resolution strategy: ‘node’ (Node.js) or ‘classic’ (TypeScript pre-1.6). */,
 	  "resolveJsonModule": true,
-	  "baseUrl": "./src" /* Base directory to resolve non-absolute module names. */,
-	//   "paths": {
-	// 	"@assets": ["src/assets/*"],
-	// 	"@components": ["src/components/*"],
-	// 	"@atoms": ["src/components/atoms/*"],
-	// 	"@molecules": ["src/components/molecules/*"],
-	// 	"@organisms": ["src/components/organisms/*"],
-	// 	"@navigations": ["src/navigations/*"],
-	// 	"@screens": ["src/screens/*"],
-	// 	"@services": ["src/services/*"],
-	// 	"@styles": ["src/styles/*"],
-	// 	"@utils": ["src/utils/*"]
-	//   } /* A series of entries which re-map imports to lookup locations relative to the ‘baseUrl’. */,
+	  "baseUrl": "./" /* Base directory to resolve non-absolute module names. */,
+	  "paths": {
+		"@src/*": ["src/*"],
+		"@src": ["src"],
+		// "@components": ["src/components/*"],
+		// "@atoms": ["src/components/atoms/*"],
+		// "@molecules": ["src/components/molecules/*"],
+		// "@organisms": ["src/components/organisms/*"],
+		// "@navigations": ["src/navigations/*"],
+		// "@screens": ["src/screens/*"],
+		// "@services": ["src/services/*"],
+		// "@styles": ["src/styles/*"],
+		// "@utils": ["src/utils/*"]
+	  } /* A series of entries which re-map imports to lookup locations relative to the ‘baseUrl’. */,
 	  // "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */
 	  "typeRoots": [
 		"./src/@types",

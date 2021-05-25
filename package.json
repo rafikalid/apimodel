@@ -9,6 +9,7 @@
   "devDependencies": {
     "@types/gulp": "^4.0.8",
     "@types/gulp-sourcemaps": "0.0.34",
+    "apollo-server": "^2.24.1",
     "gulp": "^4.0.2",
     "gulp-sourcemaps": "^3.0.0",
     "gulp-typescript": "^6.0.0-alpha.1",

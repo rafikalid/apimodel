@@ -1,17 +1,12 @@
-import { FieldSchema, FieldArgSchema } from "field";
-
-const DocSymb= Symbol('RESP-MODEL DOC');
-
+// import { FieldSchema, FieldArgSchema } from "./field";
+import { DocSymb } from "./symbols";
 
 /** Document decorator */
-export function doc(schema?: FieldSchema | string){
-	// Schema
-	if(!(schema instanceof FieldSchema))
-		schema= new FieldSchema({comment: schema});
+export function doc(comment?: string){
 	// Apply
 	return function <T extends { new (...args: any[]): {} }>(constructor: T){
-		type constType= {[DocSymb]?: FieldArgSchema};
-		(constructor as constType)[DocSymb]= (schema as FieldSchema).build((constructor as constType)[DocSymb], (Reflect.getPrototypeOf(constructor) as constType)[DocSymb]);
+		type constType= {[DocSymb]?: string};
+		(constructor as constType)[DocSymb]= comment;
 	}
 }
 
