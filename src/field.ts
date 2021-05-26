@@ -1,4 +1,4 @@
-import { buildSchema, GraphQLEnumType, GraphQLScalarType } from "graphql";
+import { GraphQLBoolean, GraphQLEnumType, GraphQLFloat, GraphQLScalarType, GraphQLString } from "graphql";
 import { fieldSymb } from "./symbols";
 
 /** Class type */
@@ -40,8 +40,8 @@ export function field(type: FieldDescType|RegExp, schema?: FieldSchema | string)
 }
 
 /** Argument */
-export function arg(docType: classType, comment?: string){
-	if(!docType[fieldSymb]) throw new Error(`Expected valid class with fields: ${docType}`);
+export function arg(docType: classType|Record<string, any>, comment?: string){
+	if(typeof docType=== 'function' && !(docType as classType)[fieldSymb]) throw new Error(`Expected valid class with fields: ${docType}`);
 	var schema= new FieldSchema({arg: docType});
 	return function(target: any, propertyKey: string, parameterIndex: number){
 		if(parameterIndex!= 1) throw new Error(`Could use @arg on second argument only! at: ${propertyKey}`);
@@ -51,7 +51,8 @@ export function arg(docType: classType, comment?: string){
 }
 
 /** Args schema */
-type FieldDescType= Function|GraphQLScalarType|GraphQLEnumType
+type FieldDescTypeB= Function|GraphQLScalarType|GraphQLEnumType
+export type FieldDescType= FieldDescTypeB | FieldDescType[]
 export interface FieldArgSchema{
 	type?:		FieldDescType, // Field type or Enumeration (exp: String, ...)
 	//* Flags
@@ -76,7 +77,7 @@ export interface FieldArgSchema{
 	/** Resolver */
 	resolve?:	Function
 	/** Arguments when method */
-	arg?:		classType
+	arg?:		classType|Record<string, any>
 	/** Default value, used for arguments */
 	default?:	any
 }
@@ -211,6 +212,7 @@ function _mergeObj(target: any, a?: any, b?: any){
 }
 
 /** Export methods */
+export function type(type: FieldDescType){ return new FieldSchema({type}) }
 export function comment(comment: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
 export function min(min: number, errMsg: string){return new FieldSchema({min, minErr: errMsg})}
@@ -236,5 +238,3 @@ export const readOnly=	_fieldArgConst({read: true, write: false});
 export const writeOnly=	_fieldArgConst({read:false, write: true});
 export const readWrite=	_fieldArgConst({read: true, write: true});
 
-
-// export const Timestamp= _fieldArgConst({type: Number})
