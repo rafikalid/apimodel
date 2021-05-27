@@ -2,13 +2,13 @@ import { ApolloServer, ServerInfo } from 'apollo-server';
 import { arg, field, makeGraphQLSchema, max, gqlEnum, readOnly, writeOnly, type } from "../src";
 
 
-enum Elements{
+enum Elements {
 	EM1,
 	EM2,
 	EM3
 }
 
-class User{
+class User {
 	@field(String, 'User name')
 	firstName?: string
 	@field(String, max(20).min(2).comment('Last name'))
@@ -24,13 +24,13 @@ class User{
 	@field(gqlEnum('Elements', Elements), 'Enum test')
 	enumElement?: Elements
 	@field([String], "Get skills")
-	skills(parent: any, @arg({test: type(String).comment('hello every body')}) args: any, context: any, infos: any){
+	skills(parent: any, @arg({ test: type(String).comment('hello every body') }) args: any, context: any, infos: any) {
 		// return args.test
 		return ['lorem', 'ipsum', 'dolor', 'bo'];
 	}
 }
 
-class FilterUser{
+class FilterUser {
 	@field(String, 'Filter by email')
 	email?: string
 	@field(String, "filter by cellPhone")
@@ -39,7 +39,7 @@ class FilterUser{
 	byUser?: User
 }
 
-class Query{
+class Query {
 	@field(Boolean)
 	flag1?: boolean
 
@@ -50,32 +50,32 @@ class Query{
 	str?: string
 
 	@field(User, "User")
-	getUsers(parent: any, @arg(FilterUser) args: any, context: any, info: any){
+	getUsers(parent: any, @arg(FilterUser) args: any, context: any, info: any) {
 		console.log('--->>', args);
-		return {firstName: 'khalid RAFIK'}
+		return { firstName: 'khalid RAFIK' }
 	}
 }
 
 
 
-var schema= makeGraphQLSchema({Query: Query});
+var schema = makeGraphQLSchema({ Query: Query });
 // console.log('SCHEMA.query>>', schema.toConfig().query?.toConfig());
 
 
 const server = new ApolloServer({
-	schema:		schema,
-	context:	function({req, res}){
+	schema: schema,
+	context: function ({ req, res }) {
 		return {}
 	},
 	// dataSources: function(){ return Repositories.all },
-	uploads:	false,
-	debug:		true,
+	uploads: false,
+	debug: true,
 	// schemaDirectives,
-	formatError: function(err){
+	formatError: function (err) {
 		console.error('ERR>>', err)
 		//TODO format errors, Hide sensitive error data
 		// if(isProd && !(err.originalError instanceof GError)){
-			// Logger.fatalError('ERR', err);
+		// Logger.fatalError('ERR', err);
 		// 	err= new Error('Internal Error');
 		// }
 		// err= new ApolloError('Internal Error', 'InternalError');
@@ -92,10 +92,10 @@ const server = new ApolloServer({
 
 // Run mock server
 server.listen(3000)
-	.then(function(obj: ServerInfo){
+	.then(function (obj: ServerInfo) {
 		console.log(`>> Listening on: ${obj.url}`);
 	})
-	.catch(function(err:Error){
+	.catch(function (err: Error) {
 		console.log('Failed to start the server >>', err);
 		process.exit(1); // Close the app
 	});
