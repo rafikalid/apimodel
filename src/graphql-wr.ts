@@ -1,5 +1,5 @@
-import { GraphQLBoolean, GraphQLEnumType, GraphQLFieldConfigArgumentMap, GraphQLFloat, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLSchemaConfig, GraphQLString } from 'graphql';
-import { field, FieldArgSchema, FieldDescType } from './field';
+import { GraphQLBoolean, GraphQLEnumType, GraphQLFieldConfigArgumentMap, GraphQLFloat, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLSchemaConfig, GraphQLString } from 'graphql';
+import { field, FieldArgSchema, FieldDescType, FieldSchema } from './field';
 import {DocSymb, fieldSymb} from './symbols';
 import { _iteratorFromObj } from './utils';
 
@@ -39,18 +39,30 @@ interface mapClassInterface{
 /** Create descriptor fields */
 function TYPE_QUERY(){}; // map only query
 function TYPE_MUTATION(){}; // Enable to map queries
-function _parseGraphQlType(fieldType: any, fieldName: string, _getDescriptor: (doc:gqlDocType)=>mapClassInterface, typeOrInput: graphQlObject){
+enum WrappedQueueWrappers{LIST, NON_NULL};
+function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescriptor: (doc:gqlDocType)=>mapClassInterface, typeOrInput: graphQlObject){
 	// Field type
-	var targetFieldGql: GraphQLOutputType | GraphQLInputType;
-	var isNew= false;
-	//* Extract field from list
-	var WrappedLst= 0; // wrapped with list
+	var fieldType;
+	//* Extract field from list and Non nulls
+	var WrappedQueue= []; // wrapped with list or nonNull
+	if(field.required)
+		WrappedQueue.push(WrappedQueueWrappers.NON_NULL);
+	fieldType= field.type!
 	while(Array.isArray(fieldType)){
-		if(fieldType.length !== 1) 'Lists in schema expected exactly to have one item!';
+		if(fieldType.length !== 1)
+			throw 'Lists in schema expected exactly to have one item!';
+		WrappedQueue.push(WrappedQueueWrappers.LIST);
 		fieldType= fieldType[0];
-		++WrappedLst;
+		if(fieldType instanceof FieldSchema){
+			field= fieldType.build();
+			fieldType= field.type!;
+			if(field.required)
+				WrappedQueue.push(WrappedQueueWrappers.NON_NULL);
+		}
 	}
 	//* Basic data
+	var targetFieldGql: GraphQLOutputType | GraphQLInputType;
+	var isNew= false;
 	if(fieldType === Number)
 		targetFieldGql= GraphQLFloat;
 	else if(fieldType === String)
@@ -62,7 +74,7 @@ function _parseGraphQlType(fieldType: any, fieldName: string, _getDescriptor: (d
 		targetFieldGql= fieldType;
 	//* Doc input
 	else{
-		var descriptor= _getDescriptor(fieldType);
+		var descriptor= _getDescriptor(fieldType as gqlDocType);
 		var nextDescriptorFields;
 		// Field name
 		if(typeof fieldType === 'function')
@@ -97,9 +109,19 @@ function _parseGraphQlType(fieldType: any, fieldName: string, _getDescriptor: (d
 		}
 	}
 	// Wrap with list
-	var i;
-	for(i=0; i<WrappedLst; ++i)
-		targetFieldGql= new GraphQLList(targetFieldGql);
+	var i= WrappedQueue.length;
+	while(--i>=0){
+		switch(WrappedQueue[i]){
+			case WrappedQueueWrappers.LIST:
+				targetFieldGql= new GraphQLList(targetFieldGql);
+				break
+			case WrappedQueueWrappers.NON_NULL:
+				targetFieldGql= new GraphQLNonNull(targetFieldGql);
+				break
+			default:
+				throw new Error(`Illegal value for switch: ${WrappedQueue[i]}`);		
+		}
+	}
 	// Return
 	return {
 		targetFieldGql: targetFieldGql,
@@ -205,7 +227,7 @@ export function makeGraphQLSchema(... args: SchemaType[]){
 				if(Reflect.has(descriptorFields, fieldKey))
 					throw new Error(`Duplicate entry: ${clazz.name}::${fieldKey}`);
 				// Get graphql type
-				var {targetFieldGql, isNew, fieldType}= _parseGraphQlType(fieldValue.type!, fieldKey, _getDescriptor, typeOrInput);
+				var {targetFieldGql, isNew, fieldType}= _parseGraphQlType(fieldValue, fieldKey, _getDescriptor, typeOrInput);
 				// Parse in next step
 				if(isNew){
 					q.push(typeOrInput);
@@ -231,7 +253,7 @@ export function makeGraphQLSchema(... args: SchemaType[]){
 						if(a.done) break;
 						var [k, v]= a.value;
 						// Get graphql type
-						var {targetFieldGql: argFieldGql, isNew, fieldType}= _parseGraphQlType(v.type!, k, _getDescriptor, graphQlObject.INPUT);
+						var {targetFieldGql: argFieldGql, isNew, fieldType}= _parseGraphQlType(v!, k, _getDescriptor, graphQlObject.INPUT);
 						// Parse in next step
 						if(isNew){
 							q.push(graphQlObject.INPUT);

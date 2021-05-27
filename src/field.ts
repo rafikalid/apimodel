@@ -121,6 +121,8 @@ export class FieldSchema{
 	// Set field optional or required
 	get required(){ this._.required= true; return this }
 	get optional(){ this._.required= false; return this; }
+	get notNull(){ this._.required= true; return this; }
+	get null(){ this._.required= false; return this; }
 
 	// Set field as readOnly
 	get readOnly(){ this._.write= false; this._.read= true; return this; }
@@ -213,6 +215,7 @@ function _mergeObj(target: any, a?: any, b?: any){
 
 /** Export methods */
 export function type(type: FieldDescType){ return new FieldSchema({type}) }
+export function list(type: FieldDescType){ return new FieldSchema({type: [type]}); }
 export function comment(comment: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
 export function min(min: number, errMsg: string){return new FieldSchema({min, minErr: errMsg})}
@@ -233,8 +236,8 @@ function _fieldArgConst(options: FieldArgSchema){
 }
 
 export const required=	_fieldArgConst({required: true});
+export const notNull=	required;
 export const optional=	_fieldArgConst({required: false});
 export const readOnly=	_fieldArgConst({read: true, write: false});
 export const writeOnly=	_fieldArgConst({read:false, write: true});
 export const readWrite=	_fieldArgConst({read: true, write: true});
-

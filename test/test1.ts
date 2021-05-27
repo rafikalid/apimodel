@@ -1,5 +1,5 @@
 import { ApolloServer, ServerInfo } from 'apollo-server';
-import { arg, field, makeGraphQLSchema, max, gqlEnum, readOnly, writeOnly, type } from "../src";
+import { arg, field, makeGraphQLSchema, max, gqlEnum, readOnly, writeOnly, type, required } from "../src";
 
 
 enum Elements {
@@ -9,7 +9,7 @@ enum Elements {
 }
 
 class User {
-	@field(String, 'User name')
+	@field(String, required.comment('User name'))
 	firstName?: string
 	@field(String, max(20).min(2).comment('Last name'))
 	lastName?: string
