@@ -21,23 +21,52 @@ function _getBuiltSchema(target: any, schema: FieldSchema, propertyKey: string){
 	return builtSchema;
 }
 
+/** @private create schema */
+function _createSchema(type: any, schema?: any){
+	/** Init type */
+	if(type instanceof FieldSchema){
+		if(schema!=null) throw new Error('Expected only one argument');
+		schema= type;
+	} else {
+		if(!(schema instanceof FieldSchema))
+			schema= new FieldSchema({comment: schema})
+	
+		if(type instanceof RegExp)
+			schema.type(String).regex(type);
+		else
+			schema.type(type);
+	}
+	return schema;
+}
+
 /**
  * Generate fields
  * @param {Function|RegExp|Record<string, string|number>} type - Type or Regex of Enum
  */
-export function field(type: FieldDescType|RegExp, schema?: FieldSchema | string){
+function field(schema: FieldSchema): Function;
+function field(type: FieldDescType|RegExp, schema?: FieldSchema | string): Function;
+function field(type: any, schema?: any){
 	/** Init type */
-	if(!(schema instanceof FieldSchema))
-		schema= new FieldSchema({comment: schema})
-	if(type instanceof RegExp)
-		schema.type(String).regex(type);
-	else
-		schema.type(type);
+	schema= _createSchema(type, schema);
 	/** Apply */
 	return function(target: any, propertyKey: string, descriptor?: PropertyDescriptor){
 		_getBuiltSchema(target, schema as FieldSchema, propertyKey);
 	}
 }
+/** Required filed */
+function requiredField(schema: FieldSchema): Function;
+function requiredField(type: FieldDescType|RegExp, schema?: FieldSchema | string): Function;
+function requiredField(type: any, schema?: any){
+	/** Init type */
+	schema= _createSchema(type, schema);
+	schema.required
+	/** Apply */
+	return function(target: any, propertyKey: string, descriptor?: PropertyDescriptor){
+		_getBuiltSchema(target, schema as FieldSchema, propertyKey);
+	}
+}
+
+export {field, requiredField};
 
 /** Argument */
 export function arg(docType: classType|Record<string, any>, comment?: string){
@@ -51,8 +80,7 @@ export function arg(docType: classType|Record<string, any>, comment?: string){
 }
 
 /** Args schema */
-type FieldDescTypeB= Function|GraphQLScalarType|GraphQLEnumType
-export type FieldDescType= FieldDescTypeB | FieldDescType[]
+export type FieldDescType= Function | GraphQLScalarType | GraphQLEnumType | Record<string, FieldSchema> | FieldDescType[] | FieldSchema[]
 export interface FieldArgSchema{
 	type?:		FieldDescType, // Field type or Enumeration (exp: String, ...)
 	//* Flags
@@ -144,6 +172,7 @@ export class FieldSchema{
 	/** Set default value */
 	default(value: any){
 		this._.default= value;
+		return this;
 	}
 
 	/** Deprecate field */
@@ -215,7 +244,8 @@ function _mergeObj(target: any, a?: any, b?: any){
 
 /** Export methods */
 export function type(type: FieldDescType){ return new FieldSchema({type}) }
-export function list(type: FieldDescType){ return new FieldSchema({type: [type]}); }
+export function list(type: FieldDescType){ return new FieldSchema({type: [new FieldSchema({type, required: true})]}); }
+export function nullableList(type: FieldDescType){ return new FieldSchema({type: [type]}); }
 export function comment(comment: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
 export function min(min: number, errMsg: string){return new FieldSchema({min, minErr: errMsg})}
