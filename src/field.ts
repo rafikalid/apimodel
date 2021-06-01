@@ -1,4 +1,5 @@
 import { GraphQLBoolean, GraphQLEnumType, GraphQLFloat, GraphQLScalarType, GraphQLString } from "graphql";
+import { Union } from "./graphql-wr";
 import { fieldSymb } from "./symbols";
 
 /** Class type */
@@ -25,8 +26,10 @@ function _getBuiltSchema(target: any, schema: FieldSchema, propertyKey: string){
 function _createSchema(type: any, schema?: any){
 	/** Init type */
 	if(type instanceof FieldSchema){
-		if(schema!=null) throw new Error('Expected only one argument');
-		schema= type;
+		if(typeof schema === 'string')
+			type.comment(schema);
+		else if(schema!=null) throw new Error('Illegal argument');
+			schema= type;
 	} else {
 		if(!(schema instanceof FieldSchema))
 			schema= new FieldSchema({comment: schema})
@@ -43,23 +46,29 @@ function _createSchema(type: any, schema?: any){
  * Generate fields
  * @param {Function|RegExp|Record<string, string|number>} type - Type or Regex of Enum
  */
-function field(schema: FieldSchema): Function;
+function field(schema: FieldSchema, comment?: string): Function;
 function field(type: FieldDescType|RegExp, schema?: FieldSchema | string): Function;
-function field(type: any, schema?: any){
+function field(type: FieldDescType|RegExp, schema: FieldSchema, comment: string): Function;
+function field(type: any, schema?: any, comment?: string){
 	/** Init type */
 	schema= _createSchema(type, schema);
+	if(typeof comment === 'string')
+		schema.comment(comment);
 	/** Apply */
 	return function(target: any, propertyKey: string, descriptor?: PropertyDescriptor){
 		_getBuiltSchema(target, schema as FieldSchema, propertyKey);
 	}
 }
 /** Required filed */
-function requiredField(schema: FieldSchema): Function;
+function requiredField(schema: FieldSchema, comment?: string): Function;
 function requiredField(type: FieldDescType|RegExp, schema?: FieldSchema | string): Function;
-function requiredField(type: any, schema?: any){
+function requiredField(type: FieldDescType|RegExp, schema?: FieldSchema, comment?: string): Function;
+function requiredField(type: any, schema?: any, comment?: string){
 	/** Init type */
 	schema= _createSchema(type, schema);
 	schema.required
+	if(typeof comment === 'string')
+		schema.comment(comment);
 	/** Apply */
 	return function(target: any, propertyKey: string, descriptor?: PropertyDescriptor){
 		_getBuiltSchema(target, schema as FieldSchema, propertyKey);
@@ -71,7 +80,7 @@ export {field, requiredField};
 /** Argument */
 export function arg(docType: classType|Record<string, any>, comment?: string){
 	if(typeof docType=== 'function' && !(docType as classType)[fieldSymb]) throw new Error(`Expected valid class with fields: ${docType}`);
-	var schema= new FieldSchema({arg: docType});
+	var schema= new FieldSchema({arg: docType, comment});
 	return function(target: any, propertyKey: string, parameterIndex: number){
 		if(parameterIndex!= 1) throw new Error(`Could use @arg on second argument only! at: ${propertyKey}`);
 		var buildSchema= _getBuiltSchema(target, schema as FieldSchema, propertyKey);
@@ -80,7 +89,7 @@ export function arg(docType: classType|Record<string, any>, comment?: string){
 }
 
 /** Args schema */
-export type FieldDescType= Function | GraphQLScalarType | GraphQLEnumType | Record<string, FieldSchema> | FieldDescType[] | FieldSchema[]
+export type FieldDescType= Function | GraphQLScalarType | GraphQLEnumType | Record<string, FieldSchema> | Map<string, FieldArgSchema> | Union | FieldDescType[] | FieldSchema[]
 export interface FieldArgSchema{
 	type?:		FieldDescType, // Field type or Enumeration (exp: String, ...)
 	//* Flags
@@ -102,6 +111,11 @@ export interface FieldArgSchema{
 	gtErr?:		string
 	regex?:		RegExp
 	regexErr?:	string
+	length?:	number
+	lengthErr?:	string
+	/** Asserts */
+	assertIn?:	Set<any>,
+	assertInErr?: string,
 	/** Resolver */
 	resolve?:	Function
 	/** Arguments when method */
@@ -131,7 +145,12 @@ const FIELD_DEFAULTS: FieldArgSchema= {
 	gtErr:		undefined,
 	regex:		undefined,
 	regexErr:	undefined,
+	length:		undefined,
+	lengthErr:	undefined,
 	resolve:	undefined,
+	/** Asserts */
+	assertIn:	undefined,
+	assertInErr: undefined,
 	/** Args when method */
 	arg:		undefined,
 	/** Default value */
@@ -164,7 +183,7 @@ export class FieldSchema{
 	}
 	
 	/** Add a comment to the field */
-	comment(comment: string){
+	comment(comment?: string){
 		this._.comment= comment;
 		return this;
 	}
@@ -217,12 +236,41 @@ export class FieldSchema{
 		this._.gtErr= errMsg;
 		return this
 	}
+	/** Value between */
+	between(min: number, max: number, errMsg?: string){
+		var _= this._
+		_.min= min;
+		_.max= max;
+		_.minErr= _.maxErr= errMsg;
+		return this;
+	}
+	/** string.length or Array.length has exaclty a size */
+	length(value: number, errMsg?: string): this
+	length(min: number, max: number, errMsg?: string): this
+	length(a: any, b?: any, c?:any){
+		var _= this._
+		if(typeof b === 'number'){
+			_.min= a;
+			_.max= b;
+			_.minErr= _.maxErr= c;
+		} else {
+			if(!Number.isSafeInteger(a)) throw new Error(`Illegal length: ${a}`);
+			_.length= a;
+			_.lengthErr= b;
+		}
+		return this;
+	}
 
 	/** Apply a regex */
 	regex(regex: RegExp, errMsg?: string){
 		this._.regex= regex;
 		this._.regexErr= errMsg;
 		return this;
+	}
+	/** Assert value in an array */
+	assertIn<T>(arr: Set<T>, errMsg?: string){
+		this._.assertIn= arr;
+		this._.assertInErr= errMsg;
 	}
 
 	/** Build */
@@ -246,16 +294,27 @@ function _mergeObj(target: any, a?: any, b?: any){
 export function type(type: FieldDescType){ return new FieldSchema({type}) }
 export function list(type: FieldDescType){ return new FieldSchema({type: [new FieldSchema({type, required: true})]}); }
 export function nullableList(type: FieldDescType){ return new FieldSchema({type: [type]}); }
-export function comment(comment: string){ return new FieldSchema({comment})}
+export function comment(comment?: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
-export function min(min: number, errMsg: string){return new FieldSchema({min, minErr: errMsg})}
-export function lte(max: number, errMsg: string){return new FieldSchema({max, maxErr: errMsg})}
-export function gte(min: number, errMsg: string){return new FieldSchema({min, minErr: errMsg})}
-export function lt(lt: number, errMsg: string){return new FieldSchema({lt, ltErr: errMsg})}
-export function gt(gt: number, errMsg: string){return new FieldSchema({gt, gtErr: errMsg})}
-export function regex(regex: RegExp, errMsg: string){return new FieldSchema({regex, regexErr: errMsg})}
+export function min(min: number, errMsg?: string){return new FieldSchema({min, minErr: errMsg})}
+export function between(min: number, max: number, errMsg?: string){return new FieldSchema().between(min, max, errMsg)}
+export function lte(max: number, errMsg?: string){return new FieldSchema({max, maxErr: errMsg})}
+export function gte(min: number, errMsg?: string){return new FieldSchema({min, minErr: errMsg})}
+export function lt(lt: number, errMsg?: string){return new FieldSchema({lt, ltErr: errMsg})}
+export function gt(gt: number, errMsg?: string){return new FieldSchema({gt, gtErr: errMsg})}
+export function assertIn<T>(arr: Set<T>, errMsg?: string){return new FieldSchema({assertIn: arr, assertInErr: errMsg})}
+export function regex(regex: RegExp, errMsg?: string){return new FieldSchema({regex, regexErr: errMsg})}
 export function deprecated(reason: string){ return new FieldSchema({deprecated: reason})}
 
+
+export function length(value: number, errMsg?: string): FieldSchema
+export function length(min: number, max: number, errMsg?: string): FieldSchema
+export function length(a: number, b?: any, c?: any){
+	if(arguments.length === 3)
+		return new FieldSchema().length(a, b, c);
+	else
+		return new FieldSchema().length(a, b);
+}
 /** Create conts */
 function _fieldArgConst(options: FieldArgSchema){
 	return new Proxy(new FieldSchema(options), {
@@ -271,3 +330,28 @@ export const optional=	_fieldArgConst({required: false});
 export const readOnly=	_fieldArgConst({read: true, write: false});
 export const writeOnly=	_fieldArgConst({read:false, write: true});
 export const readWrite=	_fieldArgConst({read: true, write: true});
+
+
+// Extends descriptor
+export function override(clazz: FieldDescType, extend: Record<string, FieldSchema>){
+	// prepare Map
+	var argDescriptor: Map<string, FieldArgSchema>;
+	if(typeof clazz === 'function'){
+		argDescriptor= (clazz as classType)[fieldSymb] ?? new Map();
+	} else if(clazz instanceof Map){
+		argDescriptor= clazz
+	} else {
+		argDescriptor= new Map();
+		var k: string;
+		for(k in (clazz as Record<string, FieldSchema>))
+			if(clazz.hasOwnProperty(k)){
+				//@ts-expect-error
+				argDescriptor.set(k, clazz[k].build())
+			}
+	}
+	// override keys
+	for(k in extend) if(extend.hasOwnProperty(k)){
+		argDescriptor.set(k, extend[k].build());
+	}
+	return argDescriptor;
+}
