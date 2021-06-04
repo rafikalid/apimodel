@@ -1,5 +1,5 @@
-import { GraphQLBoolean, GraphQLEnumType, GraphQLFloat, GraphQLScalarType, GraphQLString } from "graphql";
-import { Union } from "./graphql-wr";
+import type { GraphQLEnumType, GraphQLScalarType } from "graphql";
+import type { Union } from "./graphql-wr";
 import { fieldSymb } from "./symbols";
 
 /** Class type */
@@ -23,7 +23,7 @@ function _getBuiltSchema(target: any, schema: FieldSchema, propertyKey: string){
 }
 
 /** @private create schema */
-function _createSchema(type: any, schema?: any){
+function _createSchema(type: any, schema?: any): FieldSchema{
 	/** Init type */
 	if(type instanceof FieldSchema){
 		if(typeof schema === 'string')
@@ -33,8 +33,9 @@ function _createSchema(type: any, schema?: any){
 	} else {
 		if(!(schema instanceof FieldSchema))
 			schema= new FieldSchema({comment: schema})
-	
-		if(type instanceof RegExp)
+		if(typeof type === 'string')
+			schema.ref(type);
+		else if(type instanceof RegExp)
 			schema.type(String).regex(type);
 		else
 			schema.type(type);
@@ -47,8 +48,8 @@ function _createSchema(type: any, schema?: any){
  * @param {Function|RegExp|Record<string, string|number>} type - Type or Regex of Enum
  */
 function field(schema: FieldSchema, comment?: string): Function;
-function field(type: FieldDescType|RegExp, schema?: FieldSchema | string): Function;
-function field(type: FieldDescType|RegExp, schema: FieldSchema, comment: string): Function;
+function field(type: FieldDescType|RegExp|string, schema?: FieldSchema | string): Function;
+function field(type: FieldDescType|RegExp|string, schema: FieldSchema, comment: string): Function;
 function field(type: any, schema?: any, comment?: string){
 	/** Init type */
 	schema= _createSchema(type, schema);
@@ -61,8 +62,8 @@ function field(type: any, schema?: any, comment?: string){
 }
 /** Required filed */
 function requiredField(schema: FieldSchema, comment?: string): Function;
-function requiredField(type: FieldDescType|RegExp, schema?: FieldSchema | string): Function;
-function requiredField(type: FieldDescType|RegExp, schema?: FieldSchema, comment?: string): Function;
+function requiredField(type: FieldDescType|RegExp|string, schema?: FieldSchema | string): Function;
+function requiredField(type: FieldDescType|RegExp|string, schema?: FieldSchema, comment?: string): Function;
 function requiredField(type: any, schema?: any, comment?: string){
 	/** Init type */
 	schema= _createSchema(type, schema);
@@ -78,7 +79,7 @@ function requiredField(type: any, schema?: any, comment?: string){
 export {field, requiredField};
 
 /** Argument */
-export function arg(docType: classType|Record<string, any>, comment?: string){
+export function arg(docType: classType|string|Record<string, any>, comment?: string){
 	if(typeof docType=== 'function' && !(docType as classType)[fieldSymb]) throw new Error(`Expected valid class with fields: ${docType}`);
 	var schema= new FieldSchema({arg: docType, comment});
 	return function(target: any, propertyKey: string, parameterIndex: number){
@@ -89,7 +90,7 @@ export function arg(docType: classType|Record<string, any>, comment?: string){
 }
 
 /** Args schema */
-export type FieldDescType= Function | GraphQLScalarType | GraphQLEnumType | Record<string, FieldSchema> | Map<string, FieldArgSchema> | Union | FieldDescType[] | FieldSchema[]
+export type FieldDescType= string | Function | GraphQLScalarType | GraphQLEnumType | Record<string, FieldSchema> | Map<string, FieldArgSchema> | Union | FieldDescType[] | FieldSchema[]
 export interface FieldArgSchema{
 	type?:		FieldDescType, // Field type or Enumeration (exp: String, ...)
 	//* Flags
@@ -119,7 +120,7 @@ export interface FieldArgSchema{
 	/** Resolver */
 	resolve?:	Function
 	/** Arguments when method */
-	arg?:		classType|Record<string, any>
+	arg?:		classType|string|Record<string, any>
 	/** Default value, used for arguments */
 	default?:	any
 }

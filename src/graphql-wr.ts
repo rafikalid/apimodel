@@ -8,12 +8,12 @@ export const Int= GraphQLInt
 export const Float= GraphQLFloat
 
 /** Schema basic data */
-interface ClassFields extends Function {
+export interface ClassFields extends Function {
 	[fieldSymb]: Map<string, FieldArgSchema>,
 	[DocSymb]?: string
 }
 type gqlDocType= ClassFields|Record<string, FieldDescType>;
-type SchemaType= {
+export type SchemaType= {
 	Query?: Function|Record<string, FieldDescType>,
 	Mutation?: Function|Record<string, FieldDescType>
 }
@@ -160,7 +160,7 @@ function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescrip
 }
 
 /** Generating graphql schema */
-export function makeGraphQLSchema(... args: SchemaType[]){
+export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassFields>){
 	//* Prepare Queries and mutations
 	var q= [], qObj= [];
 	var i, len:number, arg;
@@ -269,6 +269,9 @@ export function makeGraphQLSchema(... args: SchemaType[]){
 				// Check for duplicate field name
 				if(Reflect.has(descriptorFields, fieldKey))
 					throw new Error(`Duplicate entry: ${clazz.name}::${fieldKey}`);
+				// Map references
+				if(typeof fieldValue.type === 'string' && !(fieldValue.type= refMap.get(fieldValue.type))) // referenced type
+					throw new Error(`Missing Entity: ${fieldValue.type}`);
 				// Get graphql type
 				var targetFieldGql= _parseGraphQlType(fieldValue, fieldKey, _getDescriptor, typeOrInput, _whenNew);
 				// add arguments
@@ -276,6 +279,10 @@ export function makeGraphQLSchema(... args: SchemaType[]){
 				var targetInputArg: GraphQLFieldConfigArgumentMap|undefined= undefined;
 				if(argV){
 					var argIt: Iterator<[string, FieldArgSchema]>;
+					//resolve reference
+					if(typeof argV === 'string' && !(argV= refMap.get(argV))) // referenced type
+						throw new Error(`Missing Entity: ${argV}`);
+					// parse
 					if(typeof argV === 'function'){
 						var argDescriptor= (argV as ClassFields)[fieldSymb];
 						if(!argDescriptor) throw new Error(`Illegal argument at ${fieldKey}: ${argV.name}`);
@@ -291,6 +298,9 @@ export function makeGraphQLSchema(... args: SchemaType[]){
 						var a= argIt.next()
 						if(a.done) break;
 						var [k, v]= a.value;
+						// Map refrences
+						if(typeof v.type === 'string' && !(v.type= refMap.get(v.type))) // referenced type
+							throw new Error(`Missing Entity: ${v.type}`);
 						// Get graphql type
 						var argFieldGql= _parseGraphQlType(v!, k, _getDescriptor, graphQlObject.INPUT, _whenNew);
 
