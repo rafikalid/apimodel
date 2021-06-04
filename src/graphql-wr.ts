@@ -160,7 +160,7 @@ function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescrip
 }
 
 /** Generating graphql schema */
-export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassFields>){
+export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassFields>=new Map()){
 	//* Prepare Queries and mutations
 	var q= [], qObj= [];
 	var i, len:number, arg;
