@@ -1,5 +1,5 @@
 import { GraphQLBoolean, GraphQLEnumType, GraphQLEnumValueConfigMap, GraphQLFieldConfigArgumentMap, GraphQLFloat, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLSchemaConfig, GraphQLString, GraphQLUnionType } from 'graphql';
-import { field, FieldArgSchema, FieldDescType, FieldSchema } from './field';
+import { FieldArgSchema, FieldDescType, FieldSchema } from './field';
 import {DocSymb, fieldSymb} from './symbols';
 import { _iteratorFromObj } from './utils';
 
@@ -333,20 +333,20 @@ export function makeGraphQLSchema(... args: SchemaType[]){
 const gqlEnumKeyRegex= /^[_a-zA-Z][_a-zA-Z0-9]*$/;
 export function gqlEnum<T extends Record<string, string|number>>(name: string, enumObj: T, description?: string): GraphQLEnumType
 export function gqlEnum<T extends Record<string, string|number>>(name: string, enumObj: T, propDesc?: strEnumProps<T>, description?: string): GraphQLEnumType
-export function gqlEnum<T extends Record<string, string|number>>(name: string, enumObj: T, a: any, b?: string){
+export function gqlEnum<T extends Record<string, string|number>>(name: string, enumObj: T, a?: string|strEnumProps<T>, b?: string){
 	// Args
 	var description;
 	var values: GraphQLEnumValueConfigMap= {}, k;
-	if(typeof a === 'string'){
+	if(a == null || typeof a === 'string'){
 		description= a;
 		for(k in enumObj){
-			if(gqlEnumKeyRegex.test(k))
+			if(enumObj.hasOwnProperty(k) && gqlEnumKeyRegex.test(k))
 				values[k]= {value: enumObj[k]};
 		}
 	} else {
 		description= b;
 		for(k in enumObj){
-			if(gqlEnumKeyRegex.test(k))
+			if(enumObj.hasOwnProperty(k) && gqlEnumKeyRegex.test(k))
 				values[k]= {
 					value: enumObj[k],
 					description: a[k]
