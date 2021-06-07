@@ -1,11 +1,7 @@
-import { GraphQLBoolean, GraphQLEnumType, GraphQLEnumValueConfigMap, GraphQLFieldConfigArgumentMap, GraphQLFloat, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLSchemaConfig, GraphQLString, GraphQLUnionType } from 'graphql';
+import { GraphQLBoolean, GraphQLEnumType, GraphQLEnumValueConfigMap, GraphQLFieldConfigArgumentMap, GraphQLFloat, GraphQLInputObjectType, GraphQLInputType, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLSchemaConfig, GraphQLString, GraphQLUnionType } from 'graphql';
 import { FieldArgSchema, FieldDescType, FieldSchema } from './field';
 import {DocSymb, fieldSymb} from './symbols';
 import { _iteratorFromObj } from './utils';
-
-/** Basic types */
-export const Int= GraphQLInt
-export const Float= GraphQLFloat
 
 /** Schema basic data */
 export interface ClassFields extends Function {
@@ -15,7 +11,8 @@ export interface ClassFields extends Function {
 type gqlDocType= ClassFields|Record<string, FieldDescType>;
 export type SchemaType= {
 	Query?: Function|Record<string, FieldDescType>,
-	Mutation?: Function|Record<string, FieldDescType>
+	Mutation?: Function|Record<string, FieldDescType>,
+	[k: string]: any
 }
 
 /**
@@ -35,12 +32,24 @@ interface mapClassInterface{
 	gqlInput?:	GraphQLInputObjectType // Mapped input
 }
 
-/**  */
+/** Resolve type  */
+function _resolveType(refMap: Map<string, ClassFields>){
+
+}
 /** Create descriptor fields */
 function TYPE_QUERY(){}; // map only query
 function TYPE_MUTATION(){}; // Enable to map queries
 enum WrappedQueueWrappers{LIST, NON_NULL};
-function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescriptor: (doc:gqlDocType)=>mapClassInterface, typeOrInput: graphQlObject, whenNewCb:(fieldType: any, typeOrInput:number)=>void){
+function _parseGraphQlType(
+	field: FieldArgSchema,
+	fieldName: string,
+	_getDescriptor: (doc:gqlDocType)=>mapClassInterface,
+	typeOrInput: graphQlObject,
+	whenNewCb:(fieldType: any, typeOrInput:number)=>void,
+	_genTypeName: (k: string)=>string,
+	_genUnion:(fieldType: Union, typeOrInput: graphQlObject, fieldName: string, field: FieldArgSchema)=>GraphQLOutputType | GraphQLInputType,
+	refMap: Map<string, ClassFields>
+){
 	// Field type
 	var fieldType;
 	//* Extract field from list and Non nulls
@@ -48,16 +57,23 @@ function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescrip
 	if(field.required)
 		WrappedQueue.push(WrappedQueueWrappers.NON_NULL);
 	fieldType= field.type!
-	while(Array.isArray(fieldType)){
-		if(fieldType.length !== 1)
-			throw 'Lists in schema expected exactly to have one item!';
-		WrappedQueue.push(WrappedQueueWrappers.LIST);
-		fieldType= fieldType[0];
-		if(fieldType instanceof FieldSchema){
+	while(true){
+		if(typeof fieldType === 'string'){
+			fieldType= refMap.get(fieldType);
+			if(fieldType==null)
+				throw new Error(`Missing type entity: ${fieldType}`);
+		} else if(fieldType instanceof FieldSchema){
 			field= fieldType.build();
 			fieldType= field.type!;
 			if(field.required)
 				WrappedQueue.push(WrappedQueueWrappers.NON_NULL);
+		} else if(Array.isArray(fieldType)){
+			if(fieldType.length !== 1)
+				throw 'Lists in schema expected exactly to have one item!';
+			WrappedQueue.push(WrappedQueueWrappers.LIST);
+			fieldType= fieldType[0];
+		} else {
+			break;
 		}
 	}
 	//* Basic data
@@ -72,46 +88,20 @@ function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescrip
 	else if(fieldType instanceof GraphQLScalarType || fieldType instanceof GraphQLEnumType)
 		targetFieldGql= fieldType;
 	//* Union
-	else if(fieldType instanceof Union){
-		if(typeOrInput === graphQlObject.TYPE)
-			throw new Error('Union are used only for output');
-		//Resolve types
-		var unionTypes= fieldType._types;
-		let unionResolver= fieldType._resolver
-		let unionGraphQlTypes: GraphQLObjectType[]= [];
-		var unionType, unionK;
-		for(unionK in unionTypes){
-			unionType= unionTypes[unionK];
-			var unionDescriptor= _getDescriptor(unionType as gqlDocType);
-			var unionDescriptorFields= unionDescriptor.typeFields;
-			if(!unionDescriptorFields){
-				unionDescriptorFields= {};
-				unionDescriptor.gqlType= new GraphQLObjectType({
-					name: fieldName,
-					fields: unionDescriptorFields,
-					description: (unionType as ClassFields)[DocSymb]
-				});
-				whenNewCb(unionType, typeOrInput); // Add new generated type to queue
-			}
-			unionGraphQlTypes.push(unionDescriptor.gqlType as GraphQLObjectType<any, any>);
-		}
-		// Create union type
-		targetFieldGql= new GraphQLUnionType({
-			name:		fieldType._name,
-			types:		unionGraphQlTypes,
-			resolveType(value:any){
-				return unionGraphQlTypes[unionResolver(value)];
-			},
-			description: field.comment
-		})
-	}
+	else if(fieldType instanceof Union)
+		targetFieldGql= _genUnion(fieldType, typeOrInput, fieldName, field);
 	//* Doc input
 	else{
 		var descriptor= _getDescriptor(fieldType as gqlDocType);
 		var nextDescriptorFields;
 		// Field name
 		if(typeof fieldType === 'function')
-			fieldName= fieldType.name;
+			fieldName= fieldType.name
+		else {
+			fieldName= _genTypeName(fieldName);
+			console.log(fieldName, '<<')
+		}
+		//fieldName= typeof fieldType === 'function' ? fieldType.name : _genTypeName(fieldName);
 		// next object fields
 		if(typeOrInput===graphQlObject.TYPE){
 			nextDescriptorFields= descriptor.typeFields
@@ -160,25 +150,37 @@ function _parseGraphQlType(field: FieldArgSchema, fieldName: string, _getDescrip
 }
 
 /** Generating graphql schema */
-export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassFields>=new Map()){
+export function makeGraphQLSchema(args: SchemaType[]){
+	// Store schema references
+	const refMap: Map<string, ClassFields>=new Map();
 	//* Prepare Queries and mutations
 	var q= [], qObj= [];
-	var i, len:number, arg;
+	var i, len:number, arg:SchemaType;
 	const rootQueries= new Set();
 	const rootMutations= new Set();
 	const resultSchema: GraphQLSchemaConfig= {};
 	for(i=0, len= args.length; i<len; i++){
+		// Load Query
 		arg= args[i];
-		if(arg.Query) {
+		if(typeof arg.Query === 'function') {
 			q.push(graphQlObject.TYPE);
 			qObj.push(arg.Query);
 			rootQueries.add(arg.Query);
 		}
-		if(arg.Mutation) {
+		// Load Mutation
+		if(typeof arg.Mutation === 'function') {
 			q.push(graphQlObject.TYPE);
 			qObj.push(arg.Mutation);
 			rootMutations.add(arg.Mutation);
 		}
+		// Load other classes
+		Reflect.ownKeys(arg).forEach(argK=>{
+			if(typeof argK==='string' && argK!=='Query' && argK!=='Mutation'){
+				if(refMap.has(argK))
+					throw new Error(`Found two entities with same name: ${argK}`);
+				refMap.set(argK, arg[argK]);
+			}
+		});
 	}
 	if(q.length===0) throw new Error('No Query or Mutation found!');
 
@@ -235,6 +237,53 @@ export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassF
 		qObj.push(fieldType);
 		++len;
 	}
+	//* Generate type name from fieldname
+	const _genTypeNameMap= new Map();
+	function _genTypeName(fieldName: string){
+		var v= _genTypeNameMap.get(fieldName) ?? 0;
+		_genTypeNameMap.set(fieldName, v+1);
+		return `${fieldName}_${v}`;
+	}
+	/** Create union types */
+	const _genUnionMap: Map<Union, GraphQLUnionType>= new Map();
+	function _genUnion(fieldType: Union, typeOrInput: graphQlObject, fieldName: string, field: FieldArgSchema){
+		var targetFieldGql;
+		if(!(targetFieldGql= _genUnionMap.get(fieldType))){
+			if(typeOrInput === graphQlObject.TYPE)
+				throw new Error('Union are used only for output');
+			//Resolve types
+			var unionTypes= fieldType._types;
+			let unionResolver= fieldType._resolver
+			let unionGraphQlTypes: GraphQLObjectType[]= [];
+			var unionType, unionK;
+			for(unionK in unionTypes){
+				unionType= unionTypes[unionK];
+				var unionDescriptor= _getDescriptor(unionType as gqlDocType);
+				var unionDescriptorFields= unionDescriptor.typeFields;
+				if(!unionDescriptorFields){
+					unionDescriptorFields= {};
+					unionDescriptor.gqlType= new GraphQLObjectType({
+						name: typeof unionType==='function' ? unionType.name : _genTypeName(fieldName),
+						fields: unionDescriptorFields,
+						description: (unionType as ClassFields)[DocSymb]
+					});
+					_whenNew(unionType, typeOrInput); // Add new generated type to queue
+				}
+				unionGraphQlTypes.push(unionDescriptor.gqlType as GraphQLObjectType<any, any>);
+			}
+			// Create union type
+			targetFieldGql= new GraphQLUnionType({
+				name:		fieldType._name,
+				types:		unionGraphQlTypes,
+				resolveType(value:any){
+					return unionGraphQlTypes[unionResolver(value)];
+				},
+				description: field.comment
+			});
+			_genUnionMap.set(fieldType, targetFieldGql);
+		}
+		return targetFieldGql;
+	}
 	//* Exec
 	i=0, len= q.length;
 	while(i<len){
@@ -269,19 +318,24 @@ export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassF
 				// Check for duplicate field name
 				if(Reflect.has(descriptorFields, fieldKey))
 					throw new Error(`Duplicate entry: ${clazz.name}::${fieldKey}`);
-				// Map references
-				if(typeof fieldValue.type === 'string' && !(fieldValue.type= refMap.get(fieldValue.type))) // referenced type
-					throw new Error(`Missing Entity: ${fieldValue.type}`);
 				// Get graphql type
-				var targetFieldGql= _parseGraphQlType(fieldValue, fieldKey, _getDescriptor, typeOrInput, _whenNew);
+				var targetFieldGql= _parseGraphQlType(fieldValue, fieldKey, _getDescriptor, typeOrInput, _whenNew, _genTypeName, _genUnion, refMap);
 				// add arguments
 				var argV= fieldValue.arg;
 				var targetInputArg: GraphQLFieldConfigArgumentMap|undefined= undefined;
 				if(argV){
 					var argIt: Iterator<[string, FieldArgSchema]>;
 					//resolve reference
-					if(typeof argV === 'string' && !(argV= refMap.get(argV))) // referenced type
-						throw new Error(`Missing Entity: ${argV}`);
+					while(true){
+						if(typeof argV === 'string'){
+							if(!(argV= refMap.get(argV)))
+								throw new Error(`Missing Entity: ${argV}`);
+						} else if(argV instanceof FieldSchema){
+							argV= argV.build().type!;
+						} else {
+							break;
+						}
+					}
 					// parse
 					if(typeof argV === 'function'){
 						var argDescriptor= (argV as ClassFields)[fieldSymb];
@@ -298,11 +352,8 @@ export function makeGraphQLSchema(args: SchemaType[], refMap: Map<string, ClassF
 						var a= argIt.next()
 						if(a.done) break;
 						var [k, v]= a.value;
-						// Map refrences
-						if(typeof v.type === 'string' && !(v.type= refMap.get(v.type))) // referenced type
-							throw new Error(`Missing Entity: ${v.type}`);
 						// Get graphql type
-						var argFieldGql= _parseGraphQlType(v!, k, _getDescriptor, graphQlObject.INPUT, _whenNew);
+						var argFieldGql= _parseGraphQlType(v!, k, _getDescriptor, graphQlObject.INPUT, _whenNew, _genTypeName, _genUnion, refMap);
 
 						// Add arg
 						targetInputArg[k]= {

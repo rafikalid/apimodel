@@ -33,9 +33,7 @@ function _createSchema(type: any, schema?: any): FieldSchema{
 	} else {
 		if(!(schema instanceof FieldSchema))
 			schema= new FieldSchema({comment: schema})
-		if(typeof type === 'string')
-			schema.ref(type);
-		else if(type instanceof RegExp)
+		if(type instanceof RegExp)
 			schema.type(String).regex(type);
 		else
 			schema.type(type);
