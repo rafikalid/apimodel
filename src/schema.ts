@@ -4,6 +4,8 @@ import { fieldSymb } from "./symbols";
 export interface ClassType extends Function{
 	[fieldSymb]?: Map<string, FieldSchema>
 };
+/** Exported types */
+export type ObjectType= ClassType | Record<string, FieldSchema> | Map<string, FieldSchema>;
 /** Field types */
 export enum FieldTypes{
 	LIST,
@@ -122,7 +124,7 @@ type UnionResolver= (value:any)=> number;
 
 /** Field schema */
 export class FieldSchema{
-	private _: FieldDescriptor;
+	_: FieldDescriptor;
 	constructor(options?: Partial<FieldDescriptor>){
 		this._= Object.assign({}, FIELD_DEFAULTS, options);
 	}
