@@ -1,21 +1,29 @@
+import { fieldSymb } from "./symbols";
+
+/** Class type */
+export interface ClassType extends Function{
+	[fieldSymb]?: Map<string, FieldSchema>
+};
 /** Field types */
 export enum FieldTypes{
-	OBJECT,
 	LIST,
 	UNION,
-	SCALAR
+	REF // reference or object
 }
+
+export type FieldArgSchema= string | Function | FieldSchema | RegExp | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
 
 /** Generate schema info */
 export interface FieldDescriptor{
+	/** Field name */
 	name:		string|undefined
 	/** Type */
 	type:		FieldTypes|undefined
 	/** If value of this field is required */
 	required:	Boolean
 	/** Read value */
-	read:		Boolean
-	write:		Boolean
+	input:		Boolean
+	output:		Boolean
 	/** Comment */
 	comment?:	string
 	/** Message if this is deprecated */
@@ -39,11 +47,13 @@ export interface FieldDescriptor{
 	/** Asserts */
 	assertIn?:	Set<any>,
 	assertInErr?: string
+	/** Method arguments: case of method */
+	args?:	FieldSchema
 }
 
-/** Object field descriptor */
-export interface FieldObjectDescriptor extends FieldDescriptor{
-	type: FieldTypes.OBJECT
+/** Reference field descriptor */
+export interface FieldRefDescriptor extends FieldDescriptor{
+	type: FieldTypes.REF
 	// Soft or hard reference (Using name as string or reference the obejct)
 	ref:	any
 }
@@ -56,14 +66,8 @@ export interface FieldListDescriptor extends FieldDescriptor{
 /** Scalar field descriptor */
 export interface FieldUnionDescriptor extends FieldDescriptor{
 	type:		FieldTypes.UNION
-	types:		FieldObjectDescriptor[]
+	types:		FieldRefDescriptor[]
 	resolver:	UnionResolver
-}
-/** Scalar field descriptor */
-export interface FieldScalarDescriptor extends FieldDescriptor{
-	type: FieldTypes.SCALAR
-	/** Scalar reference as string or function */
-	ref: any
 }
 
 /** Field method */
@@ -84,8 +88,8 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	/** If value of this field is required */
 	required:	false,
 	/** Read value */
-	read:		true,
-	write:		true,
+	input:		true,
+	output:		true,
 	/** Comment */
 	comment:	undefined,
 	/** Message if this is deprecated */
@@ -108,7 +112,9 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	lengthErr:	undefined,
 	/** Asserts */
 	assertIn:	undefined,
-	assertInErr: undefined
+	assertInErr: undefined,
+	/** args */
+	args: undefined
 }
 
 /** Union resolver format */
@@ -129,46 +135,48 @@ export class FieldSchema{
 	get null(){ this._.required= false; return this; }
 
 	// Set field as readOnly
-	get readOnly(){ this._.write= false; this._.read= true; return this; }
-	get writeOnly(){ this._.write= true; this._.read= false; return this; }
-	get readWrite(){ this._.write= true; this._.read= true; return this; }
+	get inOnly(){ this._.input= true; this._.output= false; return this; }
+	get outOnly(){ this._.input= false; this._.output= true; return this; }
+	get inOut(){ this._.input= true; this._.output= true; return this; }
 
 	/** Set the type of the field */
-	type(type: FieldDescriptor|FieldSchema){
+	type(type: FieldArgSchema){
 		var _= this._
-		if(typeof type ==='string'){
-			var _= this._;
-			_.type= FieldTypes.OBJECT
-			_. --------------------------
-		} else if(Array.isArray(type)){
+		if(Array.isArray(type)){
 			if(type.length !== 1)
 				throw new Error(`List as type expects exactly one entry as type`);
-			this.list(type[0]);
+			this.rList(type[0]);
 		} else if(type instanceof FieldSchema){
 			var ref= type._;
 			var k: keyof FieldDescriptor;
 			for(k in ref)
 				if(ref.hasOwnProperty(k) && typeof ref[k] !== 'undefined') _[k]= ref[k];
+		}else if(type instanceof RegExp){
+			_.regex= type;
+			_.type= FieldTypes.REF;
+			(_ as FieldRefDescriptor).ref= String;
 		} else {
-			//TODO
+			_.type= FieldTypes.REF;
+			(_ as FieldRefDescriptor).ref= type;
 		}
 		return this;
 	}
 	/** required list with required items, equivalent to [!]! */
-	rList(type: any){
+	rList(type: FieldArgSchema){
 		var _= this._
 		_.type= FieldTypes.LIST
 		_.required= true
-		if(!(type instanceof FieldSchema)) type= new FieldSchema({required: true}).type(type)._;
-		(_ as FieldListDescriptor).items= type;
+		if(!(type instanceof FieldSchema))
+			type= new FieldSchema({required: true}).type(type);
+		(_ as Partial<FieldListDescriptor>).items= type._;
 		return this;
 	}
 	/** List */
-	list(type:any){
+	list(type:FieldArgSchema){
 		var _= this._
 		_.type= FieldTypes.LIST
-		if(!(type instanceof FieldSchema)) type= new FieldSchema().type(type)._;
-		(_ as FieldListDescriptor).items= type;
+		if(!(type instanceof FieldSchema)) type= new FieldSchema().type(type);
+		(_ as FieldListDescriptor).items= type._;
 		return this;
 	}
 
@@ -183,16 +191,18 @@ export class FieldSchema{
 	){
 		var _= this._;
 		_.name= name;
+		_.input= false;
+		_.output= true; // unions are output only
 		(_ as FieldUnionDescriptor).resolver= typeResolver;
 		//Types
-		var arrtypes: FieldObjectDescriptor[]= [];
+		var arrtypes: FieldRefDescriptor[]= [];
 		var i, tp, obj, len= types.length;
 		for(i=0; i<len; ++i){
 			tp= types[i];
 			obj= tp instanceof FieldSchema? tp._ : new FieldSchema().type(tp)._;
-			if(obj.type !== FieldTypes.OBJECT)
+			if(obj.type !== FieldTypes.REF)
 				throw new Error(`Expected unions as Objects, received arg [${i}] as ${typeof obj.type==='undefined' ? 'undefined' : FieldTypes[obj.type]}`);
-			arrtypes.push(obj as FieldObjectDescriptor);
+			arrtypes.push(obj as FieldRefDescriptor);
 		}
 		(_ as FieldUnionDescriptor).types= arrtypes;
 		return this;
@@ -300,9 +310,9 @@ export class FieldSchema{
 }
 
 /** Export methods */
-export function type(type: FieldDescriptor){ return new FieldSchema().type(type) }
-export function list(type: FieldDescriptor){ return new FieldSchema().type([new FieldSchema({required: true}).type(type)]); }
-export function nullableList(type: FieldDescriptor){ return new FieldSchema().type([type]); }
+export function type(type: any){ return new FieldSchema().type(type) }
+export function list(type: any){ return new FieldSchema().list(type); }
+export function rList(type: any){ return new FieldSchema().rList(type); }
 export function comment(comment?: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
 export function min(min: number, errMsg?: string){return new FieldSchema({min, minErr: errMsg})}
@@ -325,7 +335,7 @@ export function length(a: number, b?: any, c?: any){
 		return new FieldSchema().length(a, b);
 }
 /** Create conts */
-function _fieldArgConst(options: FieldArgSchema){
+function _fieldArgConst(options: Partial<FieldDescriptor>){
 	return new Proxy(new FieldSchema(options), {
 		get(obj, k:keyof FieldSchema){
 			return obj[k]
@@ -336,6 +346,6 @@ function _fieldArgConst(options: FieldArgSchema){
 export const required=	_fieldArgConst({required: true});
 export const notNull=	required;
 export const optional=	_fieldArgConst({required: false});
-export const readOnly=	_fieldArgConst({read: true, write: false});
-export const writeOnly=	_fieldArgConst({read:false, write: true});
-export const readWrite=	_fieldArgConst({read: true, write: true});
+export const inOnly=	_fieldArgConst({input: true, output: false});
+export const outOnly=	_fieldArgConst({input: false, output: true});
+export const inOut=	_fieldArgConst({input: true, output: true});

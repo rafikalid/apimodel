@@ -4,11 +4,11 @@ export enum ShemaTypes{
 	OUTPUT_LIST,
 	OUTPUT_UNION,
 	OUTPUT_METHOD,
-	OUTPUT_SCALAR, // Scalars && Basic values like: String, ....
 
 	INPUT_OBJECT,
 	INPUT_LIST,
-	INPUT_SCALAR, // Scalars && Basic values like: String, ....
+	
+	SCALAR, // Scalars && Basic values like: String, ....
 }
 
 /** Object fields */
@@ -52,11 +52,6 @@ export interface OutputList extends OutputNode{
 	data:	OutputNode
 }
 
-/** Output scalar */
-export interface Outputscalar extends OutputNode{
-	type:	ShemaTypes.OUTPUT_SCALAR
-}
-
 /** Output Method */
 export interface OutputMethod extends OutputNode{
 	/** List args */
@@ -75,7 +70,7 @@ export interface InputList extends InputNode{
 	data:	InputNode
 }
 
-/** Input scalar */
-export interface InputScalar extends InputNode{
-	type:	ShemaTypes.INPUT_SCALAR
+/** Scalar */
+export interface ScalarInterface extends OutputNode, InputNode{
+	type:	ShemaTypes.SCALAR
 }
