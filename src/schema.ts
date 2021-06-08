@@ -22,10 +22,10 @@ export interface FieldDescriptor{
 	/** Type */
 	type:		FieldTypes|undefined
 	/** If value of this field is required */
-	required:	Boolean
+	required:	boolean
 	/** Read value */
-	input:		Boolean
-	output:		Boolean
+	input:		boolean
+	output:		boolean
 	/** Comment */
 	comment?:	string
 	/** Message if this is deprecated */

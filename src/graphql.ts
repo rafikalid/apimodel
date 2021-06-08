@@ -1,87 +1,16 @@
-import { ClassType, FieldSchema, FieldTypes, ObjectType } from "./schema";
+import { GraphQLInputObjectType, GraphQLObjectType, GraphQLInputFieldConfigMap, GraphQLFieldConfigMap } from "graphql";
+import { ClassType, FieldSchema, ObjectType } from "./schema";
 import { fieldSymb } from "./symbols";
 
-/** Schema node types */
-export enum ShemaTypes{
-	/** Object in initialization phase */
-	INIT,
-	OUTPUT_OBJECT,
-	OUTPUT_LIST,
-	OUTPUT_UNION,
-	OUTPUT_METHOD,
-
-	INPUT_OBJECT,
-	INPUT_LIST,
-	
-	SCALAR, // Scalars && Basic values like: String, ....
-}
-
-/** Object fields */
-export interface Field {
-	/** Field name */
-	name: string
-	/** If reference to input or output object */
-	refrence: string
-}
-export interface OutputField extends Field {
-	value: OutputNode
-}
-export interface InputField extends Field {
-	value: InputNode
-}
-
-/** Basic schema node */
-export interface SchemaNode{
-	/** Unique reference name */
-	name:	string|undefined,
-	/** Node type */
-	type: ShemaTypes
-	/** Required */
-	required: boolean
-	/** Comment */
-	comment: string|undefined
-}
-
-export interface OutputNode extends SchemaNode{}
-export interface InputNode extends SchemaNode{}
-
-/** Output object type */
-export interface OutputObject extends OutputNode{
-	type:	ShemaTypes.OUTPUT_OBJECT
-	fields: OutputNode[]
-}
-
-/** Output list type */
-export interface OutputList extends OutputNode{
-	type:	ShemaTypes.OUTPUT_LIST
-	data:	OutputNode
-}
-
-/** Output Method */
-export interface OutputMethod extends OutputNode{
-	/** List args */
-	args: (InputField[]|undefined)[]
-}
-
-/** Input object type */
-export interface InputObject extends InputNode{
-	type:	ShemaTypes.INPUT_OBJECT
-	fields: InputNode[]
-}
-
-/** Input list */
-export interface InputList extends InputNode{
-	type:	ShemaTypes.INPUT_LIST
-	data:	InputNode
-}
-
-/** Scalar */
-export interface ScalarInterface extends OutputNode, InputNode{
-	type:	ShemaTypes.SCALAR
-}
 
 /** Is output or input object */
 enum ObjectInOut{ INPUT, OUTPUT };
+
+/** Map objects with data info */
+interface MappedObjInfo{
+	fields:	GraphQLFieldConfigMap<any, any>|GraphQLInputFieldConfigMap
+	gql:	GraphQLObjectType|GraphQLInputObjectType
+}
 
 /** Compile schema */
 export function compile(args: Record<string, ObjectType>[]){
@@ -101,8 +30,12 @@ export function compile(args: Record<string, ObjectType>[]){
 			}
 		});
 	}
-	// Reference all classes
-	const refMap: Map<string, OutputObject|InputObject>= new Map();
+	// Generate unique names for entities
+	const uniqueNames: Map<string, number> = new Map();
+	// Reference all classes with mapped fields
+	const refMap: Map<string, MappedObjInfo>= new Map();
+	var node:	MappedObjInfo;
+	var fields:	GraphQLFieldConfigMap<any, any>|GraphQLInputFieldConfigMap;
 	// Compile
 	i=0, len= queue.length;
 	var currentNode: ObjectType, currentNodeName: string, currentNodeType: ObjectInOut;
@@ -114,13 +47,65 @@ export function compile(args: Record<string, ObjectType>[]){
 		currentNodeType= queueT[i];
 		++i; // Next
 		// get map iterator
+		var autoName= true;
 		if(currentNode instanceof Map)
 			it= currentNode.entries();
 		else if((currentNode as ClassType)[fieldSymb]!=null){
 			it= (currentNode as ClassType)[fieldSymb]!.entries();
-			if(typeof currentNode.name === 'string') currentNodeName= currentNode.name;
+			if(typeof currentNode.name === 'string'){
+				currentNodeName= currentNode.name;
+				autoName= false;
+			}
 		} else 
 			it= _objEntries(currentNode as Record<string, FieldSchema>);
+		// Add "Input" postfix
+		if(currentNodeType===ObjectInOut.INPUT)
+			currentNodeName+= 'Input';
+		// Generate unique name
+		if(autoName){
+			var n= uniqueNames.get(currentNodeName);
+			if(n==null) n= 0;
+			uniqueNames.set(currentNodeName, n);
+			currentNodeName= `${currentNodeName}_${n}`;
+		}
+		// Get/Create Graphql object
+		node= refMap.get(currentNodeName)!;
+		if(node==null){
+			fields= {};
+			if(currentNodeType=== ObjectInOut.OUTPUT){
+				//* OUTPUT
+				node= {
+					fields: fields,
+					gql: new GraphQLObjectType({
+						fields: fields as GraphQLFieldConfigMap<any, any>,
+						name: currentNodeName,
+						// description: '' //TODO
+					})
+				};
+			} else {
+				//* INPUT
+				node={
+					fields: fields,
+					gql: new GraphQLInputObjectType({
+						fields: fields as GraphQLInputFieldConfigMap ,
+						name:	currentNodeName,
+						// description: '' //TODO
+					})
+				}
+			}
+			refMap.set(currentNodeName, node);
+		} else {
+			fields= node.fields;
+		}
+		
+
+
+
+
+
+
+
+
 		// Create object
 		if(currentNodeType===ObjectInOut.INPUT)
 			currentNodeName+= 'Input'; // Add input prefix to this class name
@@ -180,6 +165,7 @@ export function compile(args: Record<string, ObjectType>[]){
 		}
 	}
 }
+
 
 /** Get object entries iterator */
 function* _objEntries(obj: Record<string, FieldSchema>): IterableIterator<[string, FieldSchema]>{
