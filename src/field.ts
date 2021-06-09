@@ -63,7 +63,7 @@ export function arg(schema: FieldResolverArgSchema, comment?: string){
 }
 
 /** Merge multiple entities */
-export function merge(name: string, ...args: FieldMergeArg[]): EntityDescriptor{
+export function merge(name: string, ...args: FieldMergeArg[]): ClassType{
 	if(args.length<2)
 		throw new Error('Merge: Expected at least 2 args');
 	// Merge
@@ -87,10 +87,11 @@ export function merge(name: string, ...args: FieldMergeArg[]): EntityDescriptor{
 			for(k in arg) fields.set(k, arg[k]);
 		}
 	}
-	// Return
-	return {
-		name,
-		comment: undefined,
-		fields
-	}
+	return class Filter{
+		[fieldSymb]= {
+			name,
+			comment: undefined,
+			fields
+		}
+	};
 }
