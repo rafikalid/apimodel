@@ -192,8 +192,12 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 		if(currentNode instanceof Map)
 			it= currentNode.entries();
 		else if((currentNode as ClassType)[fieldSymb]!=null){
-			it= (currentNode as ClassType)[fieldSymb]!.entries();
-			if(typeof currentNode.name === 'string'){
+			var entityDesc= (currentNode as ClassType)[fieldSymb]!;
+			it= entityDesc.fields.entries();
+			if(typeof entityDesc.name=== 'string'){
+				currentNodeName= entityDesc.name;
+				autoName= false;
+			}else if(typeof currentNode.name === 'string'){
 				currentNodeName= currentNode.name;
 				autoName= false;
 			}

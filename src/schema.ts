@@ -1,8 +1,9 @@
+import { GraphQLScalarType } from "graphql";
 import { fieldSymb } from "./symbols";
 
 /** Class type */
 export interface ClassType extends Function{
-	[fieldSymb]?: Map<string, FieldSchema>
+	[fieldSymb]?: EntityDescriptor
 };
 /** Exported types */
 export type ObjectType= ClassType | Record<string, FieldSchema> | Map<string, FieldSchema>;
@@ -12,9 +13,16 @@ export enum FieldTypes{
 	REF // reference or object
 }
 
-export type FieldArgSchema= string | Function | FieldSchema | RegExp | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
-export type FieldResolverArgSchema= string | Function | Record<string, FieldSchema> | Map<string, FieldSchema>;
+export type FieldArgSchema= string | GraphQLScalarType | Function | FieldSchema | RegExp | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
+export type FieldResolverArgSchema= string | GraphQLScalarType | Function | Record<string, FieldSchema> | Map<string, FieldSchema>;
+export type FieldMergeArg= Function|Record<string, FieldSchema> | Map<string, FieldSchema>;
 
+/** Entity descriptor */
+export interface EntityDescriptor{
+	name: string|undefined
+	comment: string|undefined
+	fields: Map<string, FieldSchema>
+}
 /** Generate schema info */
 export interface FieldDescriptor{
 	/** Field name */
