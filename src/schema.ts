@@ -9,11 +9,11 @@ export type ObjectType= ClassType | Record<string, FieldSchema> | Map<string, Fi
 /** Field types */
 export enum FieldTypes{
 	LIST,
-	UNION,
 	REF // reference or object
 }
 
 export type FieldArgSchema= string | Function | FieldSchema | RegExp | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
+export type FieldResolverArgSchema= string | Function | Record<string, FieldSchema> | Map<string, FieldSchema>;
 
 /** Generate schema info */
 export interface FieldDescriptor{
@@ -51,6 +51,10 @@ export interface FieldDescriptor{
 	assertInErr?: string
 	/** Method arguments: case of method */
 	args?:	FieldSchema
+	resolver?: Function
+	/** Subscribe function */
+	//TODO add logic for this
+	subscribe?: Function
 }
 
 /** Reference field descriptor */
@@ -64,22 +68,6 @@ export interface FieldListDescriptor extends FieldDescriptor{
 	type: FieldTypes.LIST
 	// items data
 	items:	FieldDescriptor
-}
-/** Scalar field descriptor */
-export interface FieldUnionDescriptor extends FieldDescriptor{
-	type:		FieldTypes.UNION
-	types:		FieldRefDescriptor[]
-	resolver:	UnionResolver
-}
-
-/** Field method */
-export interface FieldMethodDescriptor{
-	/** Method declaration */
-	method: Function
-	/** Arguments, for GraphQL, only args[1] will be set */
-	args: (FieldDescriptor|undefined)[]
-	/** Return value */
-	return: FieldDescriptor
 }
 
 /** Default values for schema fields */
@@ -116,11 +104,11 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	assertIn:	undefined,
 	assertInErr: undefined,
 	/** args */
-	args: undefined
+	args: undefined,
+	// Target method
+	resolver: undefined,
+	subscribe: undefined
 }
-
-/** Union resolver format */
-type UnionResolver= (value:any)=> number;
 
 /** Field schema */
 export class FieldSchema{
@@ -175,38 +163,10 @@ export class FieldSchema{
 	}
 	/** List */
 	list(type:FieldArgSchema){
-		var _= this._
-		_.type= FieldTypes.LIST
+		var _= this._;
+		_.type= FieldTypes.LIST;
 		if(!(type instanceof FieldSchema)) type= new FieldSchema().type(type);
 		(_ as FieldListDescriptor).items= type._;
-		return this;
-	}
-
-	/** UNION */
-	union(
-		/** Name for the union */
-		name: string,
-		/** Types nested in this union */
-		types: any[],
-		/** Resolver returns the index of target type */
-		typeResolver: UnionResolver
-	){
-		var _= this._;
-		_.name= name;
-		_.input= false;
-		_.output= true; // unions are output only
-		(_ as FieldUnionDescriptor).resolver= typeResolver;
-		//Types
-		var arrtypes: FieldRefDescriptor[]= [];
-		var i, tp, obj, len= types.length;
-		for(i=0; i<len; ++i){
-			tp= types[i];
-			obj= tp instanceof FieldSchema? tp._ : new FieldSchema().type(tp)._;
-			if(obj.type !== FieldTypes.REF)
-				throw new Error(`Expected unions as Objects, received arg [${i}] as ${typeof obj.type==='undefined' ? 'undefined' : FieldTypes[obj.type]}`);
-			arrtypes.push(obj as FieldRefDescriptor);
-		}
-		(_ as FieldUnionDescriptor).types= arrtypes;
 		return this;
 	}
 	

@@ -1,4 +1,4 @@
-import { arg, field, max, outOnly, inOnly, type, required } from "../src";
+import { arg, field, max, outOnly, inOnly, type, required, requiredField } from "../src";
 
 enum Elements {
 	EM1,
@@ -47,7 +47,7 @@ export class Query {
 	@field(String, 'String field')
 	str?: string
 
-	@field(User, "User")
+	@requiredField(User, "User")
 	getUsers(parent: any, @arg(FilterUser) args: any, context: any, info: any) {
 		console.log('--->>', args);
 		return { firstName: 'khalid RAFIK' }

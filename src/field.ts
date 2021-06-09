@@ -1,4 +1,4 @@
-import { FieldSchema } from "./schema";
+import { FieldResolverArgSchema, FieldSchema } from "./schema";
 import type { FieldArgSchema, ClassType, FieldDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 
@@ -26,6 +26,10 @@ export function field(schema: FieldArgSchema, modifier?: FieldSchema|string, com
 		}
 		else if(typeof modifier==='string')
 			s.comment(modifier);
+		// Add resolver
+		if(typeof target[propertyKey] === 'function')
+			s._.resolver= target[propertyKey];
+		// Save
 		fields.set(propertyKey, s);
 	}
 }
@@ -42,13 +46,11 @@ export function requiredField(schema: FieldArgSchema, modifier?: FieldSchema|str
 }
 
 /** Argument */
-export function arg(schema: FieldArgSchema, comment?: string){
+export function arg(schema: FieldResolverArgSchema, comment?: string){
 	return function(target: any, propertyKey: string, parameterIndex: number){
 		if(parameterIndex!= 1)
 			throw new Error(`@arg expected to be used on second argument only! used at arg: ${propertyKey}`);
-		// prepare
-		if(!(schema instanceof FieldSchema)) schema= new FieldSchema().type(schema);
 		//Apply descriptor
-		field(new FieldSchema({args: schema}))(target, propertyKey);
+		field(new FieldSchema({args: new FieldSchema({name:propertyKey, comment, resolver: target[propertyKey]}).type(schema)}))(target, propertyKey);
 	}
 }
