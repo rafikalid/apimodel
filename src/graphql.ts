@@ -1,4 +1,4 @@
-import { GraphQLInputObjectType, GraphQLObjectType, GraphQLInputFieldConfigMap, GraphQLFieldConfigMap, GraphQLOutputType, GraphQLInputType, GraphQLString, GraphQLFloat, GraphQLBoolean, GraphQLScalarType, GraphQLEnumType, GraphQLList, GraphQLNonNull, GraphQLFieldConfigArgumentMap, GraphQLFieldResolver, GraphQLInputFieldMap, GraphQLSchema, GraphQLUnionType, GraphQLArgumentConfig } from "graphql";
+import { GraphQLInputObjectType, GraphQLObjectType, GraphQLInputFieldConfigMap, GraphQLFieldConfigMap, GraphQLOutputType, GraphQLInputType, GraphQLString, GraphQLFloat, GraphQLBoolean, GraphQLScalarType, GraphQLEnumType, GraphQLList, GraphQLNonNull, GraphQLFieldConfigArgumentMap, GraphQLFieldResolver, GraphQLInputFieldMap, GraphQLSchema, GraphQLUnionType, GraphQLArgumentConfig, GraphQLEnumValueConfigMap } from "graphql";
 import { ClassType, FieldSchema, FieldTypes, ObjectType, FieldListDescriptor, FieldRefDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 import { Union } from "./union";
@@ -332,4 +332,49 @@ function* _objEntries(obj: Record<string, FieldSchema>): IterableIterator<[strin
 			v= new FieldSchema().type(v);
 		yield [k, v];
 	}
+}
+
+/** Convert enum properties into string */
+export type strEnumProps<T> ={
+	[k in keyof T]: string
+};
+
+/** Generate Graphql enumerations */
+const gqlEnumKeyRegex= /^[^\d]/;
+export function gqlEnum(name: string, enumMap: Record<string, string|number>, enumDesc?: Record<string, string>): GraphQLEnumType
+export function gqlEnum(name: string, description:string, enumMap: Record<string, string|number>, enumDesc?: Record<string, string>): GraphQLEnumType
+export function gqlEnum(name: string, a:any, b?: any, c?: any){
+	// Load params
+	var description, enumMap, enumDesc;
+	if(typeof a=== 'string'){
+		description= a;
+		enumMap= b;
+		enumDesc= c;
+	} else {
+		enumMap= a;
+		enumDesc= b;
+	}
+	// Create values
+	var values: GraphQLEnumValueConfigMap= {};
+	var k;
+	if(enumDesc)
+		for(k in enumMap)
+			if(typeof k=== 'string' && gqlEnumKeyRegex.test(k))
+				values[k]= {
+					value:			enumMap[k],
+					description:	enumDesc[k]
+				};
+	else
+		for(k in enumMap)
+			if(typeof k=== 'string' && gqlEnumKeyRegex.test(k))
+				values[k]= { value:	enumMap[k] };
+	// Create enum
+	return new GraphQLEnumType({
+		name,
+		description,
+		values: values
+		// extensions?: Maybe<Readonly<GraphQLEnumTypeExtensions>>;
+		// astNode?: Maybe<EnumTypeDefinitionNode>;
+		// extensionASTNodes?: Maybe<ReadonlyArray<EnumTypeExtensionNode>>;
+	});
 }
