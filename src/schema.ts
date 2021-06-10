@@ -1,5 +1,6 @@
-import { GraphQLScalarType } from "graphql";
+import { GraphQLEnumType, GraphQLScalarType } from "graphql";
 import { fieldSymb } from "./symbols";
+import { Union } from './union';
 
 /** Class type */
 export interface ClassType extends Function{
@@ -13,8 +14,8 @@ export enum FieldTypes{
 	REF // reference or object
 }
 
-export type FieldArgSchema= string | GraphQLScalarType | Function | FieldSchema | RegExp | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
-export type FieldResolverArgSchema= string | GraphQLScalarType | Function | Record<string, FieldSchema> | Map<string, FieldSchema>;
+export type FieldArgSchema= string | GraphQLScalarType | GraphQLEnumType | Function | FieldSchema | RegExp | Union | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
+export type FieldResolverArgSchema= string | GraphQLScalarType | GraphQLEnumType | Function | Union | Record<string, FieldSchema> | Map<string, FieldSchema>;
 export type FieldMergeArg= Function|Record<string, FieldSchema> | Map<string, FieldSchema>;
 
 /** Entity descriptor */
@@ -141,9 +142,11 @@ export class FieldSchema{
 	type(type: FieldArgSchema){
 		var _= this._
 		if(Array.isArray(type)){
-			if(type.length !== 1)
-				throw new Error(`List as type expects exactly one entry as type`);
-			this.rList(type[0]);
+			if(type.length !== 1){
+				console.log('---', type)
+				throw new Error(`List as type expects exactly one entry as type, got: ${type.length}`);
+			}
+			this.list(type[0]);
 		} else if(type instanceof FieldSchema){
 			var ref= type._;
 			var k: keyof FieldDescriptor;
@@ -156,11 +159,13 @@ export class FieldSchema{
 		} else {
 			_.type= FieldTypes.REF;
 			(_ as FieldRefDescriptor).ref= type;
+			if(typeof type === 'function')
+				_.name= type.name;
 		}
 		return this;
 	}
 	/** required list with required items, equivalent to [!]! */
-	rList(type: FieldArgSchema){
+	list(type: FieldArgSchema){
 		var _= this._
 		_.type= FieldTypes.LIST
 		_.required= true
@@ -169,8 +174,8 @@ export class FieldSchema{
 		(_ as Partial<FieldListDescriptor>).items= type._;
 		return this;
 	}
-	/** List */
-	list(type:FieldArgSchema){
+	/** Nullable List */
+	nlist(type:FieldArgSchema){
 		var _= this._;
 		_.type= FieldTypes.LIST;
 		if(!(type instanceof FieldSchema)) type= new FieldSchema().type(type);
@@ -282,7 +287,7 @@ export class FieldSchema{
 /** Export methods */
 export function type(type: any){ return new FieldSchema().type(type) }
 export function list(type: any){ return new FieldSchema().list(type); }
-export function rList(type: any){ return new FieldSchema().rList(type); }
+export function nlist(type: any){ return new FieldSchema().nlist(type); }
 export function comment(comment?: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
 export function min(min: number, errMsg?: string){return new FieldSchema({min, minErr: errMsg})}

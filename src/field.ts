@@ -1,4 +1,4 @@
-import { EntityDescriptor, FieldMergeArg, FieldResolverArgSchema, FieldSchema } from "./schema";
+import { FieldMergeArg, FieldResolverArgSchema, FieldSchema } from "./schema";
 import type { FieldArgSchema, ClassType, FieldDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 
@@ -58,7 +58,7 @@ export function arg(schema: FieldResolverArgSchema, comment?: string){
 		if(parameterIndex!= 1)
 			throw new Error(`@arg expected to be used on second argument only! used at arg: ${propertyKey}`);
 		//Apply descriptor
-		field(new FieldSchema({args: new FieldSchema({name:propertyKey, comment, resolver: target[propertyKey]}).type(schema)}))(target, propertyKey);
+		field(new FieldSchema({args: new FieldSchema({name:`${propertyKey}Arg`, comment, resolver: target[propertyKey]}).type(schema)}))(target, propertyKey);
 	}
 }
 
