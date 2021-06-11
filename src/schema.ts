@@ -287,6 +287,13 @@ export class FieldSchema{
 		if(!(type instanceof FieldSchema))
 			type= new FieldSchema().type(type);
 		this._.in= type;
+		return type;
+	}
+
+	/** Change name */
+	name(name: string, comment?: string){
+		this._.name= name;
+		if(comment) this._.comment= comment;
 		return this;
 	}
 

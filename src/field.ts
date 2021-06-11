@@ -3,9 +3,7 @@ import type { FieldArgSchema, ClassType, EntityDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 
 /** Generate field schema */
-export function field(schema: FieldArgSchema, comment?: string): Function;
-export function field(schema: FieldArgSchema, modifier: FieldSchema, comment?: string): Function;
-export function field(schema: FieldArgSchema, modifier?: FieldSchema|string, comment?: string){
+export function field(schema: FieldArgSchema, commentOrModifier?: string|FieldSchema, commentOrModifier2?: string|FieldSchema){
 	return function(target: any, propertyKey: string){
 		// Create class descriptor
 		var constructor=  (typeof target === 'function'? target : target.constructor) as ClassType;
@@ -17,12 +15,16 @@ export function field(schema: FieldArgSchema, modifier?: FieldSchema|string, com
 		var prevSkm= fields.get(propertyKey);
 		var s= prevSkm==null ? new FieldSchema({name: propertyKey}) : new FieldSchema().type(prevSkm);
 		s.type(schema); // apply new schema
-		if(modifier instanceof FieldSchema){
-			s.type(modifier);
-			if(typeof comment === 'string') s.comment(comment);
-		}
-		else if(typeof modifier==='string')
-			s.comment(modifier);
+		// Modifier 1
+		if(typeof commentOrModifier === 'string')
+			s.comment(commentOrModifier);
+		else if(commentOrModifier instanceof FieldSchema)
+			s.type(commentOrModifier);
+		// Modifier 2
+		if(typeof commentOrModifier2 === 'string')
+			s.comment(commentOrModifier2);
+		else if(commentOrModifier2 instanceof FieldSchema)
+			s.type(commentOrModifier2);
 		// Add resolver
 		if(typeof target[propertyKey] === 'function'){
 			s._.resolver= target[propertyKey];
@@ -34,14 +36,10 @@ export function field(schema: FieldArgSchema, modifier?: FieldSchema|string, com
 }
 
 /** Required filed */
-export function requiredField(schema: FieldArgSchema, comment?: string): Function;
-export function requiredField(schema: FieldArgSchema, modifier: FieldSchema, comment?: string): Function;
-export function requiredField(schema: FieldArgSchema, modifier?: FieldSchema|string, comment?: string){
+export function requiredField(schema: FieldArgSchema, modifier?: FieldSchema|string, modifier2?: FieldSchema|string){
 	schema= new FieldSchema().type(schema);
 	schema.required;
-	if(modifier instanceof FieldSchema) schema.type(modifier);
-	else if(typeof modifier=== 'string') comment= modifier;
-	return field(schema, comment);
+	return field(schema, modifier, modifier2);
 }
 
 /** Argument */
