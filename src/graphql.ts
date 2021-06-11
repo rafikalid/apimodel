@@ -321,7 +321,11 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 			var rootFieldSchema= fieldSchema;
 			// Ignore if not apropriate format
 			if(currentNodeType===ObjectInOut.INPUT || currentNodeType===ObjectInOut.ARG){
-				if(rootFieldSchema.input===false) continue;
+				if(rootFieldSchema.in){
+					// This field has custom input format
+					rootFieldSchema= fieldSchema= rootFieldSchema.in._
+				}
+				else if(rootFieldSchema.input===false) continue;
 			} else if(currentNodeType===ObjectInOut.OUTPUT){
 				if(rootFieldSchema.output===false) continue;
 			}

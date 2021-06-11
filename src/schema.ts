@@ -67,6 +67,8 @@ export interface FieldDescriptor{
 	/** Subscribe function */
 	//TODO add logic for this
 	subscribe?: Function
+	/** If input type is deferent from output */
+	in?:	FieldSchema
 }
 
 /** Reference field descriptor */
@@ -119,7 +121,9 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	args: undefined,
 	// Target method
 	resolver: undefined,
-	subscribe: undefined
+	subscribe: undefined,
+	// Input format
+	in: undefined
 }
 
 /** Field schema */
@@ -275,6 +279,15 @@ export class FieldSchema{
 	assertIn<T>(arr: Set<T>, errMsg?: string){
 		this._.assertIn= arr;
 		this._.assertInErr= errMsg;
+		return this;
+	}
+
+	/** Add argument as input */
+	input(type: FieldArgSchema){
+		if(!(type instanceof FieldSchema))
+			type= new FieldSchema().type(type);
+		this._.in= type;
+		return this;
 	}
 
 	/** Build */
@@ -288,9 +301,10 @@ export class FieldSchema{
 }
 
 /** Export methods */
-export function type(type: any){ return new FieldSchema().type(type) }
-export function list(type: any){ return new FieldSchema().list(type); }
-export function nlist(type: any){ return new FieldSchema().nlist(type); }
+export function type(type: FieldArgSchema, comment?: string){ return new FieldSchema({comment}).type(type) }
+export function list(type: FieldArgSchema, comment?: string){ return new FieldSchema({comment}).list(type); }
+export function nlist(type: FieldArgSchema, comment?: string){ return new FieldSchema({comment}).nlist(type); }
+export function input(type: FieldArgSchema, comment?: string){ return new FieldSchema({comment}).input(type)}
 export function comment(comment?: string){ return new FieldSchema({comment})}
 export function max(max: number, errMsg?: string){ return new FieldSchema({max, maxErr: errMsg})}
 export function min(min: number, errMsg?: string){return new FieldSchema({min, minErr: errMsg})}
@@ -302,7 +316,6 @@ export function gt(gt: number, errMsg?: string){return new FieldSchema({gt, gtEr
 export function assertIn<T>(arr: Set<T>, errMsg?: string){return new FieldSchema({assertIn: arr, assertInErr: errMsg})}
 export function regex(regex: RegExp, errMsg?: string){return new FieldSchema({regex, regexErr: errMsg})}
 export function deprecated(reason: string){ return new FieldSchema({deprecated: reason})}
-
 
 export function length(value: number, errMsg?: string): FieldSchema
 export function length(min: number, max: number, errMsg?: string): FieldSchema
