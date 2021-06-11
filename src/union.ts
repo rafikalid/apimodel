@@ -5,11 +5,11 @@ type UnionResolver= (value:any)=> number;
 /** Create unions */
 export class Union{
 	_name: string;
-	_types: Function[];
+	_types: (Function|string|object)[];
 	_resolver: UnionResolver;
 	_description: string;
 
-	constructor(name: string, desc: string, types: Function[], resolver: UnionResolver){
+	constructor(name: string, desc: string, types: (Function|string|object)[], resolver: UnionResolver){
 		// Check types
 		if(!Array.isArray(types) || types.length < 2)
 			throw new Error('Expected at least 2 types for this union!');

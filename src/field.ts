@@ -1,5 +1,5 @@
 import { FieldMergeArg, FieldResolverArgSchema, FieldSchema } from "./schema";
-import type { FieldArgSchema, ClassType, FieldDescriptor } from "./schema";
+import type { FieldArgSchema, ClassType, EntityDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 
 /** Generate field schema */
@@ -10,19 +10,9 @@ export function field(schema: FieldArgSchema, modifier?: FieldSchema|string, com
 		// Create class descriptor
 		var constructor=  (typeof target === 'function'? target : target.constructor) as ClassType;
 		var fields:Map<string, FieldSchema>;
-		if(typeof constructor[fieldSymb] === 'undefined'){
-			fields = new Map();
-			constructor[fieldSymb]= {
-				name:		constructor.name,
-				comment:	'', //TODO add comments to the entity
-				fields:		fields
-			};
-			var parentFields= (Reflect.getPrototypeOf(constructor) as ClassType)[fieldSymb];
-			if(parentFields)
-				parentFields.fields.forEach((v:FieldSchema, k:string)=> {fields!.set(k, v)});
-		} else {
-			fields= constructor[fieldSymb]!.fields
-		}
+		if(!constructor.hasOwnProperty(fieldSymb))
+			doc()(constructor);
+		fields= constructor[fieldSymb]!.fields
 		// Create field descriptor
 		var prevSkm= fields.get(propertyKey);
 		var s= prevSkm==null ? new FieldSchema({name: propertyKey}) : new FieldSchema().type(prevSkm);
@@ -34,8 +24,10 @@ export function field(schema: FieldArgSchema, modifier?: FieldSchema|string, com
 		else if(typeof modifier==='string')
 			s.comment(modifier);
 		// Add resolver
-		if(typeof target[propertyKey] === 'function')
+		if(typeof target[propertyKey] === 'function'){
 			s._.resolver= target[propertyKey];
+			s._.input= false;
+		}
 		// Save
 		fields.set(propertyKey, s);
 	}
@@ -58,7 +50,7 @@ export function arg(schema: FieldResolverArgSchema, comment?: string){
 		if(parameterIndex!= 1)
 			throw new Error(`@arg expected to be used on second argument only! used at arg: ${propertyKey}`);
 		//Apply descriptor
-		field(new FieldSchema({args: new FieldSchema({name:`${propertyKey}Arg`, comment, resolver: target[propertyKey]}).type(schema)}))(target, propertyKey);
+		field(new FieldSchema({args: new FieldSchema({name:`${propertyKey}Arg`, comment, resolver: target[propertyKey], input: false}).type(schema)}))(target, propertyKey);
 	}
 }
 
@@ -94,4 +86,26 @@ export function merge(name: string, ...args: FieldMergeArg[]): ClassType{
 			fields
 		}
 	};
+}
+
+/** Add entity meta data */
+export function doc(comment?: string){
+	return function(constructor: ClassType){
+		if(constructor.hasOwnProperty(fieldSymb)){
+			constructor[fieldSymb]!.comment= comment;
+		} else {
+			var fields = new Map();
+			var parentFields= constructor[fieldSymb];
+			if(parentFields){
+				parentFields.fields.forEach((v:FieldSchema, k:string)=> {fields!.set(k, v)});
+				if(!comment) comment= parentFields.comment;
+			}
+			// Save
+			constructor[fieldSymb]= {
+				name:		constructor.name,
+				comment:	comment,
+				fields:		fields
+			};
+		}
+	}
 }

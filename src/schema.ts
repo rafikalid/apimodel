@@ -24,17 +24,20 @@ export interface EntityDescriptor{
 	comment: string|undefined
 	fields: Map<string, FieldSchema>
 }
-/** Generate schema info */
+/**
+ * Generate schema info
+ * ! everything must be optional
+ */
 export interface FieldDescriptor{
 	/** Field name */
-	name:		string|undefined
+	name?:		string
 	/** Type */
-	type:		FieldTypes|undefined
+	type?:		FieldTypes
 	/** If value of this field is required */
-	required:	boolean
+	required?:	boolean
 	/** Read value */
-	input:		boolean
-	output:		boolean
+	input?:		boolean
+	output?:	boolean
 	/** Comment */
 	comment?:	string
 	/** Message if this is deprecated */
@@ -85,10 +88,10 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	/** Type */
 	type:		undefined,
 	/** If value of this field is required */
-	required:	false,
+	required:	undefined,
 	/** Read value */
-	input:		true,
-	output:		true,
+	input:		undefined,
+	output:		undefined,
 	/** Comment */
 	comment:	undefined,
 	/** Message if this is deprecated */

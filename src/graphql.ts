@@ -50,24 +50,31 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 	//* Prepare and merge public classes
 	const foundEntitiesSet: Set<any>= new Set();
 	const mappedClasses: Map<string, FoundEnitiesPrepare>= new Map();
-	//! Append entity to the list, used only in preparation phase once in code.
-	function _addEntity(name: string, entity:any){
-		// get entity descriptor
-		if(typeof entity=== 'function'){
-			var entityD= (entity as ClassType)[fieldSymb]!
-			if(entityD==null) throw new Error(`Missing fields on entity: ${entity.name}`);
-			// name= typeof entityD.name === 'string'? entityD.name : entity.name;
-			name= entity.name;
+	// Add entity to class set
+	function _addEntity(name: string, entity:any): boolean{
+		if(foundEntitiesSet.has(entity))
+			return false; // Not added
+		else{
+			foundEntitiesSet.add(entity);
+			// get entity descriptor
+			if(typeof entity=== 'function'){
+				var entityD= (entity as ClassType)[fieldSymb]!
+				if(entityD==null) throw new Error(`Missing fields on entity: ${entity.name}`);
+				// name= typeof entityD.name === 'string'? entityD.name : entity.name;
+				name= entity.name;
+			}
+			var entityDesc: FoundEnitiesPrepare= mappedClasses.get(name)!;
+			if(entityDesc== null){
+				entityDesc= {
+					entities: [entity],
+					ok: [false, false, false]
+				};
+				mappedClasses.set(name, entityDesc);
+			} else {
+				entityDesc.entities.push(entity);
+			}
+			return true; // Added
 		}
-		var entityDesc: FoundEnitiesPrepare= mappedClasses.get(name)!;
-		if(entityDesc== null){
-			entityDesc= {
-				entities: [],
-				ok: [false, false, false]
-			};
-			mappedClasses.set(name, entityDesc);
-		}
-		entityDesc.entities.push(entity);
 	}
 	// Add Objects
 	var i: number, len: number, arg:Record<string, ObjectType>, argObj: ObjectType;
@@ -87,9 +94,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 						queue.push(argObj);
 						queueN.push(argK);
 						queueT.push(ObjectInOut.OUTPUT);
-					} else if(foundEntitiesSet.has(argObj)){}
-					else {
-						foundEntitiesSet.add(argObj);
+					} else {
 						// Add to the queue
 						_addEntity(argK, argObj);
 					}
@@ -100,11 +105,6 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 
 	// Reference all classes with mapped fields
 	const refMap: Map<string, MappedObjInfo>= new Map();
-	const foundEntities: Set<any>[]= [
-		new Set(), // ObjectInOut.OUTPUT
-		new Set(), // ObjectInOut.INPUT
-		new Set() //  ObjectInOut.ARG
-	];
 	
 	// Generate unique names for entities
 	const uniqueNames: Map<string, number> = new Map();
@@ -120,48 +120,70 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 		var refName:string;
 		//Reference name
 		var entityD: EntityDescriptor;
-		if(typeof ref==='string') refName= ref;
-		else if(typeof ref==='function'){
-			entityD= (ref as ClassType)[fieldSymb]!;
-			if(entityD==null)
-				throw new Error(`Missing fields on entity: ${ref.name}`);
-			// refName= typeof entityD.name=== 'string' ? entityD.name : ref.name;
-			refName= ref.name;
+		var entityDesc: FoundEnitiesPrepare|undefined;
+		var doAddEntity= true;
+		if(typeof ref==='string'){
+			refName= ref;
+			entityDesc= mappedClasses.get(refName);
+		}else{
+			if(typeof ref==='function'){
+				// entityD= (ref as ClassType)[fieldSymb]!;
+				// if(entityD==null)
+				// 	throw new Error(`Missing fields on entity: ${ref.name}`);
+				// refName= typeof entityD.name=== 'string' ? entityD.name : ref.name;
+				refName= ref.name;
+			}
+			else if(entityD= (ref as ClassType)[fieldSymb]!){
+				refName= typeof entityD.name=== 'string'? entityD.name : fieldKey;
+				// ARG should be unique when Map or Plain object
+				if(nodeType === ObjectInOut.ARG){
+					doAddEntity= false;
+					refName= _getUniqueName(refName);
+				}
+			}
+			else{
+				doAddEntity= false;
+				refName= _getUniqueName(fieldKey);
+			}
+			// Push entity
+			if(doAddEntity){
+				var isEntityAdded= _addEntity(refName, ref);
+				entityDesc= mappedClasses.get(refName)!;
+				// Check if add entity to the queue
+				if(isEntityAdded){
+					var descI, descLen, refOk= entityDesc.ok;
+					for(descI=0, descLen=refOk.length; descI<descLen; ++descI){
+						if(refOk[descI]){
+							queue.push(ref);
+							queueN.push(refName);
+							queueT.push(descI);
+							++len;
+						}
+					}
+				}
+			} else {
+				// Add to queue
+				queue.push(ref);
+				queueN.push(refName);
+				queueT.push(nodeType);
+				++len;
+			}
 		}
-		else if(entityD= (ref as ClassType)[fieldSymb]!){
-			refName= typeof entityD.name=== 'string'? entityD.name : fieldKey;
-			// ARG should be unique when Map or Plain object
-			if(nodeType === ObjectInOut.ARG)
-				refName= _getUniqueName(refName);
-		}
-		else
-			refName= _getUniqueName(fieldKey);
 		// Check for unloaded entities
-		var entitySet= foundEntities[nodeType];
-		var entityDesc: FoundEnitiesPrepare|undefined= mappedClasses.get(refName);
-		if(entityDesc!=null && !entityDesc.ok[nodeType]){
+		if(doAddEntity &&  entityDesc && !entityDesc.ok[nodeType]){
 			// Add all prepareed entities
 			entityDesc.ok[nodeType]= true;
 			var refI, refLen, refEntity, refEnt= entityDesc.entities;
 			for(refI=0, refLen= refEnt.length; refI<refLen; ++refI){
 				refEntity= refEnt[refI];
-				entitySet.add(refEntity);
 				queue.push(refEntity);
 				queueN.push(refName);
 				queueT.push(nodeType);
 				++len;
 			}
 		}
-		//Add to queue
-		if(typeof ref !== 'string' && !entitySet.has(ref)){
-			entitySet.add(ref);
-			queue.push(ref);
-			queueN.push(refName);
-			queueT.push(nodeType);
-			++len;
-		}
 		return refName;
-	}
+	} 	
 	// Get/create node
 	function _getNode(nodeName: string, nodeType: ObjectInOut): MappedObjInfo{
 		var nodeEl= refMap.get(nodeName)!;
@@ -175,7 +197,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 					gql: new GraphQLObjectType({
 						fields: nodeFields as GraphQLFieldConfigMap<any, any>,
 						name: nodeName,
-						// description: '' //TODO
+						// description: ''
 					})
 				};
 			} else if (nodeType === ObjectInOut.ARG) {
@@ -192,7 +214,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 					gql: new GraphQLInputObjectType({
 						fields: nodeFields as GraphQLInputFieldConfigMap ,
 						name:	nodeName,
-						// description: '' //TODO
+						// description: ''
 					})
 				}
 			}
@@ -256,31 +278,39 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 			throw new Error(`Entity name could not ends with "Input" keyword: ${currentNodeName}`);
 		if(currentNodeName.endsWith('_Arg'))
 			throw new Error(`Entity name could not ends with "_Arg" keyword: ${currentNodeName}`);
+		// Continue if it's a union
+		if(currentNode instanceof Union){
+			_genUnion(currentNode);
+			continue;
+		}
+		// Add "Input" or "_Arg" postfix
+		currentNodeName= _nodeNamePostfix(currentNodeName, currentNodeType);
+		// Get/Create Graphql object
+		node= _getNode(currentNodeName, currentNodeType);
 		// get map iterator
 		// var autoName= true;
 		var entityDesc: EntityDescriptor;
 		if(typeof currentNode === 'function') {
 			if(!(entityDesc= (currentNode as ClassType)[fieldSymb]!))
-				throw new Error(`Missing fields on entity: ${currentNodeName}`);
+				throw new Error(`Missing fields on entity: ${currentNode.name}`);
 			it= entityDesc.fields.entries();
+			// Add entity comment
+			if(entityDesc.comment) node.gql!.description= entityDesc.comment;
 		}
 		else if(currentNode instanceof Map)
 			it= currentNode.entries();
 		else if( entityDesc= (currentNode as {[fieldSymb]: EntityDescriptor})[fieldSymb]! ){
 			it= entityDesc.fields.entries();
-		} else if(currentNode instanceof Union){
-			_genUnion(currentNode);
-			continue;
+			// Add entity comment
+			if(entityDesc.comment) node.gql!.description= entityDesc.comment;
 		} else
 			it= _objEntries(currentNode as Record<string, FieldSchema>);
 		// Generate unique name
 		// if(autoName)
 		// 	currentNodeName= _getUniqueName(currentNodeName);
-		// Add "Input" postfix
-		currentNodeName= _nodeNamePostfix(currentNodeName, currentNodeType);
-		// Get/Create Graphql object
-		node= _getNode(currentNodeName, currentNodeType);
 		fields= node.fields;
+		// Add description
+		
 		// Go through fields
 		while(true){
 			// Get next entry
@@ -289,6 +319,12 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 			var [fieldKey, fieldValue]= entry.value;
 			var fieldSchema= fieldValue._
 			var rootFieldSchema= fieldSchema;
+			// Ignore if not apropriate format
+			if(currentNodeType===ObjectInOut.INPUT || currentNodeType===ObjectInOut.ARG){
+				if(rootFieldSchema.input===false) continue;
+			} else if(currentNodeType===ObjectInOut.OUTPUT){
+				if(rootFieldSchema.output===false) continue;
+			}
 			// Check for duplicate fields
 			if(Reflect.has(fields, fieldKey))
 				throw new Error(`Duplicate field: ${currentNodeName}::${fieldKey}`);
@@ -428,17 +464,20 @@ export function gqlEnum(name: string, a:any, b?: any, c?: any){
 	// Create values
 	var values: GraphQLEnumValueConfigMap= {};
 	var k;
-	if(enumDesc)
-		for(k in enumMap)
-			if(typeof k=== 'string' && gqlEnumKeyRegex.test(k))
+	if(enumDesc){
+		for(k in enumMap){
+			if(gqlEnumKeyRegex.test(k))
 				values[k]= {
 					value:			enumMap[k],
 					description:	enumDesc[k]
 				};
-	else
-		for(k in enumMap)
-			if(typeof k=== 'string' && gqlEnumKeyRegex.test(k))
+		}
+	} else{
+		for(k in enumMap){
+			if(gqlEnumKeyRegex.test(k))
 				values[k]= { value:	enumMap[k] };
+		}
+	}
 	// Create enum
 	return new GraphQLEnumType({
 		name,
