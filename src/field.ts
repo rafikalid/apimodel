@@ -3,14 +3,15 @@ import type { FieldArgSchema, ClassType, EntityDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 
 /** Generate field schema */
+//string | GraphQLScalarType | GraphQLEnumType | Function | FieldSchema | RegExp | Union | Record<string, FieldSchema> | Map<string, FieldSchema> | FieldArgSchema[]
 export function field(schema: FieldArgSchema, commentOrModifier?: string|FieldSchema, commentOrModifier2?: string|FieldSchema){
+	// return fx
 	return function(target: any, propertyKey: string){
 		// Create class descriptor
 		var constructor=  (typeof target === 'function'? target : target.constructor) as ClassType;
-		var fields:Map<string, FieldSchema>;
 		if(!constructor.hasOwnProperty(fieldSymb))
 			doc()(constructor);
-		fields= constructor[fieldSymb]!.fields
+		var fields:Map<string, FieldSchema>= constructor[fieldSymb]!.fields;
 		// Create field descriptor
 		var prevSkm= fields.get(propertyKey);
 		var s= prevSkm==null ? new FieldSchema({name: propertyKey}) : new FieldSchema().type(prevSkm);

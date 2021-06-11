@@ -47,9 +47,12 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 	const queue: ObjectType[]= [];
 	const queueN: string[]= [];
 	const queueT: ObjectInOut[]= [];
+	/** Queue path is used to intercept schema errors */
+	const queuePath: string[]= [];
 	//* Prepare and merge public classes
 	const foundEntitiesSet: Set<any>= new Set();
 	const mappedClasses: Map<string, FoundEnitiesPrepare>= new Map();
+	var currentNodePath: string= '';
 	// Add entity to class set
 	function _addEntity(name: string, entity:any): boolean{
 		if(foundEntitiesSet.has(entity))
@@ -94,6 +97,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 						queue.push(argObj);
 						queueN.push(argK);
 						queueT.push(ObjectInOut.OUTPUT);
+						queuePath.push(currentNodePath);
 					} else {
 						// Add to the queue
 						_addEntity(argK, argObj);
@@ -116,7 +120,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 		return name;
 	}
 	// Generate reference for doc
-	function _genRef(ref: any, fieldKey: string, nodeType: ObjectInOut): string{
+	function _genRef(ref: any, fieldKey: string, nodeType: ObjectInOut, currentPath: string): string{
 		var refName:string;
 		//Reference name
 		var entityD: EntityDescriptor;
@@ -152,11 +156,13 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 				// Check if add entity to the queue
 				if(isEntityAdded){
 					var descI, descLen, refOk= entityDesc.ok;
+					var cPath= `${currentPath} > ${fieldKey}(${refName})`;
 					for(descI=0, descLen=refOk.length; descI<descLen; ++descI){
 						if(refOk[descI]){
 							queue.push(ref);
 							queueN.push(refName);
 							queueT.push(descI);
+							queuePath.push(cPath);
 							++len;
 						}
 					}
@@ -166,6 +172,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 				queue.push(ref);
 				queueN.push(refName);
 				queueT.push(nodeType);
+				queuePath.push(`${currentPath} > ${fieldKey}(${refName})`);
 				++len;
 			}
 		}
@@ -179,6 +186,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 				queue.push(refEntity);
 				queueN.push(refName);
 				queueT.push(nodeType);
+				queuePath.push(`${currentPath} > ${fieldKey}(${refName})`);
 				++len;
 			}
 		}
@@ -226,7 +234,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 	}
 	// Union resolver
 	const _unionMap: Map<Union, GraphQLUnionType>= new Map();
-	function _genUnion(union: Union):GraphQLUnionType{
+	function _genUnion(union: Union, currentPath: string):GraphQLUnionType{
 		var result= _unionMap.get(union);
 		if(result==null){
 			// Resolve types
@@ -238,7 +246,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 			for(unionK in unionTypes){
 				unionType= unionTypes[unionK];
 				//* Input or Output Object
-				unionType= _genRef(unionType, 'unknown', ObjectInOut.OUTPUT);
+				unionType= _genRef(unionType, 'unknown', ObjectInOut.OUTPUT, currentPath);
 				// Load reference
 				refNode= _getNode(unionType, ObjectInOut.OUTPUT);
 				targetFieldGql= refNode.gql;
@@ -259,171 +267,177 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 	}
 	// Compile
 	i=0, len= queue.length;
-	var currentNode: ObjectType, currentNodeName: string, currentNodeType: ObjectInOut;
+	var currentNode: ObjectType, currentNodeName: string, currentNodeType: ObjectInOut= ObjectInOut.OUTPUT;
 	var it: IterableIterator<[string, FieldSchema]>;
 	var node:		MappedObjInfo;
 	var refNode:	MappedObjInfo;
 	var fields:	GraphQLFieldConfigMap<any, any>|GraphQLInputFieldConfigMap|GraphQLFieldConfigArgumentMap;
 	while(i<len){
-		// Load current node
-		currentNode= queue[i];
-		currentNodeName= queueN[i];
-		currentNodeType= queueT[i];
-		if(currentNode== null)
-			throw new Error(`Enexpected undefined value at: ${currentNodeName}`);
-		var nextNodeType= currentNodeType===ObjectInOut.ARG? ObjectInOut.INPUT : currentNodeType;
-		++i; // Next
-		// Check 
-		if(currentNodeName.endsWith('Input'))
-			throw new Error(`Entity name could not ends with "Input" keyword: ${currentNodeName}`);
-		if(currentNodeName.endsWith('_Arg'))
-			throw new Error(`Entity name could not ends with "_Arg" keyword: ${currentNodeName}`);
-		// Continue if it's a union
-		if(currentNode instanceof Union){
-			_genUnion(currentNode);
-			continue;
-		}
-		// Add "Input" or "_Arg" postfix
-		currentNodeName= _nodeNamePostfix(currentNodeName, currentNodeType);
-		// Get/Create Graphql object
-		node= _getNode(currentNodeName, currentNodeType);
-		// get map iterator
-		// var autoName= true;
-		var entityDesc: EntityDescriptor;
-		if(typeof currentNode === 'function') {
-			if(!(entityDesc= (currentNode as ClassType)[fieldSymb]!))
-				throw new Error(`Missing fields on entity: ${currentNode.name}`);
-			it= entityDesc.fields.entries();
-			// Add entity comment
-			if(entityDesc.comment) node.gql!.description= entityDesc.comment;
-		}
-		else if(currentNode instanceof Map)
-			it= currentNode.entries();
-		else if( entityDesc= (currentNode as {[fieldSymb]: EntityDescriptor})[fieldSymb]! ){
-			it= entityDesc.fields.entries();
-			// Add entity comment
-			if(entityDesc.comment) node.gql!.description= entityDesc.comment;
-		} else
-			it= _objEntries(currentNode as Record<string, FieldSchema>);
-		// Generate unique name
-		// if(autoName)
-		// 	currentNodeName= _getUniqueName(currentNodeName);
-		fields= node.fields;
-		// Add description
-		
-		// Go through fields
-		while(true){
-			// Get next entry
-			var entry= it.next();
-			if(entry.done) break;
-			var [fieldKey, fieldValue]= entry.value;
-			var fieldSchema= fieldValue._
-			var rootFieldSchema= fieldSchema;
-			// Ignore if not apropriate format
-			if(currentNodeType===ObjectInOut.INPUT || currentNodeType===ObjectInOut.ARG){
-				if(rootFieldSchema.in){
-					// This field has custom input format
-					rootFieldSchema= fieldSchema= rootFieldSchema.in._
-				}
-				else if(rootFieldSchema.input===false) continue;
-			} else if(currentNodeType===ObjectInOut.OUTPUT){
-				if(rootFieldSchema.output===false) continue;
+		try {
+			// Load current node
+			currentNode= queue[i];
+			currentNodeName= queueN[i];
+			currentNodeType= queueT[i];
+			currentNodePath= queuePath[i];
+			if(currentNode== null)
+				throw new Error(`Enexpected undefined value at: ${currentNodeName}`);
+			var nextNodeType= currentNodeType===ObjectInOut.ARG? ObjectInOut.INPUT : currentNodeType;
+			++i; // Next
+			// Check 
+			if(currentNodeName.endsWith('Input'))
+				throw new Error(`Entity name could not ends with "Input" keyword: ${currentNodeName}`);
+			if(currentNodeName.endsWith('_Arg'))
+				throw new Error(`Entity name could not ends with "_Arg" keyword: ${currentNodeName}`);
+			// Continue if it's a union
+			if(currentNode instanceof Union){
+				_genUnion(currentNode, currentNodePath);
+				continue;
 			}
-			// Check for duplicate fields
-			if(Reflect.has(fields, fieldKey))
-				throw new Error(`Duplicate field: ${currentNodeName}::${fieldKey}`);
-			// Check for lists && requireds
-			var wrappersQueue= []; // wrapped with list or nonNull
+			// Add "Input" or "_Arg" postfix
+			currentNodeName= _nodeNamePostfix(currentNodeName, currentNodeType);
+			// Get/Create Graphql object
+			node= _getNode(currentNodeName, currentNodeType);
+			// get map iterator
+			// var autoName= true;
+			var entityDesc: EntityDescriptor;
+			if(typeof currentNode === 'function') {
+				if(!(entityDesc= (currentNode as ClassType)[fieldSymb]!))
+					throw new Error(`Missing fields on entity: ${currentNode.name}`);
+				it= entityDesc.fields.entries();
+				// Add entity comment
+				if(entityDesc.comment && node.gql){ node.gql.description= entityDesc.comment; }
+			}
+			else if(currentNode instanceof Map)
+				it= currentNode.entries();
+			else if( entityDesc= (currentNode as {[fieldSymb]: EntityDescriptor})[fieldSymb]! ){
+				it= entityDesc.fields.entries();
+				// Add entity comment
+				if(entityDesc.comment && node.gql){ node.gql.description= entityDesc.comment; }
+			} else {
+				it= _objEntries(currentNode as Record<string, FieldSchema>);
+			}
+			// Generate unique name
+			// if(autoName)
+			// 	currentNodeName= _getUniqueName(currentNodeName);
+			fields= node.fields;
+			// Add description
+			
+			// Go through fields
 			while(true){
-				// Add required wrapper
-				if(fieldSchema.required) wrappersQueue.push(WrappedQueueWrappers.NON_NULL);
-				if(fieldSchema.type===FieldTypes.LIST){
-					wrappersQueue.push(WrappedQueueWrappers.LIST);
-					fieldSchema= (fieldSchema as FieldListDescriptor).items
-				} else {
-					break;
+				// Get next entry
+				var entry= it.next();
+				if(entry.done) break;
+				var [fieldKey, fieldValue]= entry.value;
+				var fieldSchema= fieldValue._
+				var rootFieldSchema= fieldSchema;
+				// Ignore if not apropriate format
+				if(currentNodeType===ObjectInOut.INPUT || currentNodeType===ObjectInOut.ARG){
+					if(rootFieldSchema.in){
+						// This field has custom input format
+						rootFieldSchema= fieldSchema= rootFieldSchema.in._
+					}
+					else if(rootFieldSchema.input===false) continue;
+				} else if(currentNodeType===ObjectInOut.OUTPUT){
+					if(rootFieldSchema.output===false) continue;
 				}
-			}
-			// Check the reference
-			var targetFieldGql: GraphQLOutputType | GraphQLInputType;
-			var ref= (fieldSchema as FieldRefDescriptor).ref;
-			//* Basic data
-			if(typeof ref==='undefined')
-				throw new Error(`Missing reference on : ${currentNodeName}::${fieldKey}`);
-			else if(ref === String)
-				targetFieldGql= GraphQLString;
-			else if(ref === Number)
-				targetFieldGql= GraphQLFloat;
-			else if(ref === Boolean)
-				targetFieldGql= GraphQLBoolean;
-			//* Scalar or enum
-			else if(ref instanceof GraphQLScalarType || ref instanceof GraphQLEnumType)
-				targetFieldGql= ref;
-			//* Union
-			else if(ref instanceof Union)
-				targetFieldGql= _genUnion(ref);
-			else {
-				//* Input or Output Object
-				ref= _genRef(ref, fieldKey, nextNodeType);
-				// Load reference
-				ref= _nodeNamePostfix(ref, nextNodeType);
-				refNode= _getNode(ref, nextNodeType);
-				targetFieldGql= refNode.gql!;
-			}
-			// Wrap with list and nonNull
-			var wrappersQueueI= wrappersQueue.length;
-			while(--wrappersQueueI >=0){
-				switch(wrappersQueue[wrappersQueueI]){
-					case WrappedQueueWrappers.LIST:
-						targetFieldGql= new GraphQLList(targetFieldGql);
-						break
-					case WrappedQueueWrappers.NON_NULL:
-						targetFieldGql= new GraphQLNonNull(targetFieldGql);
-						break
-					default:
-						throw new Error(`Illegal value for switch: ${wrappersQueue[wrappersQueueI]}`);		
+				// Check for duplicate fields
+				if(Reflect.has(fields, fieldKey))
+					throw new Error(`Duplicate field: ${currentNodeName}::${fieldKey}`);
+				// Check for lists && requireds
+				var wrappersQueue= []; // wrapped with list or nonNull
+				while(true){
+					// Add required wrapper
+					if(fieldSchema.required) wrappersQueue.push(WrappedQueueWrappers.NON_NULL);
+					if(fieldSchema.type===FieldTypes.LIST){
+						wrappersQueue.push(WrappedQueueWrappers.LIST);
+						fieldSchema= (fieldSchema as FieldListDescriptor).items
+					} else {
+						break;
+					}
 				}
-			}
-			//Check for resolver args
-			var fieldResolverArgs: GraphQLFieldConfigArgumentMap|undefined= undefined;
-			var argV: any= rootFieldSchema.args;
-			if(argV){
-				//* Argument
-				var argRef= argV._.ref;
-				if(argRef == null)
-					throw new Error(`Missing arg at ${currentNodeName}::${fieldKey}`);
-				argRef= _genRef(argRef, fieldKey, ObjectInOut.ARG);
-				argRef+= '_Arg';
-				// Load reference
-				var argNode= _getNode(argRef, ObjectInOut.ARG);
-				fieldResolverArgs= argNode.fields as GraphQLFieldConfigArgumentMap;
-			}
-			// create field
-			if(currentNodeType=== ObjectInOut.OUTPUT)
-				(fields as GraphQLFieldConfigMap<any, any>)[fieldKey]= {
-					type:				targetFieldGql as GraphQLOutputType,
-					args:				fieldResolverArgs,
-					resolve:			rootFieldSchema.resolver as GraphQLFieldResolver<any, any, { [argName: string]: any; }>,
-					subscribe:			rootFieldSchema.subscribe as GraphQLFieldResolver<any, any, { [argName: string]: any; }>,
-					deprecationReason:	rootFieldSchema.deprecated,
-					description:		rootFieldSchema.comment
-				};
-			else if(currentNodeType === ObjectInOut.ARG)
-				(fields as GraphQLFieldConfigArgumentMap)[fieldKey]= {
-					type:				targetFieldGql as GraphQLInputType,
-					defaultValue:		rootFieldSchema.default,
-					description:		rootFieldSchema.comment,
-					deprecationReason:	rootFieldSchema.deprecated
+				// Check the reference
+				var targetFieldGql: GraphQLOutputType | GraphQLInputType;
+				var ref= (fieldSchema as FieldRefDescriptor).ref;
+				//* Basic data
+				if(typeof ref==='undefined')
+					throw new Error(`Missing reference on : ${currentNodeName}::${fieldSchema.name}::${fieldKey}`);
+				else if(ref === String)
+					targetFieldGql= GraphQLString;
+				else if(ref === Number)
+					targetFieldGql= GraphQLFloat;
+				else if(ref === Boolean)
+					targetFieldGql= GraphQLBoolean;
+				//* Scalar or enum
+				else if(ref instanceof GraphQLScalarType || ref instanceof GraphQLEnumType)
+					targetFieldGql= ref;
+				//* Union
+				else if(ref instanceof Union)
+					targetFieldGql= _genUnion(ref, currentNodePath);
+				else {
+					//* Input or Output Object
+					ref= _genRef(ref, fieldKey, nextNodeType, currentNodePath);
+					// Load reference
+					ref= _nodeNamePostfix(ref, nextNodeType);
+					refNode= _getNode(ref, nextNodeType);
+					targetFieldGql= refNode.gql!;
 				}
-			else
-				(fields as GraphQLInputFieldMap)[fieldKey]= {
-					name:				rootFieldSchema.name || fieldKey,
-					type:				targetFieldGql as GraphQLInputType,
-					defaultValue:		rootFieldSchema.default,
-					description:		rootFieldSchema.comment,
-					deprecationReason:	rootFieldSchema.deprecated,
-					extensions:			undefined
-				};
+				// Wrap with list and nonNull
+				var wrappersQueueI= wrappersQueue.length;
+				while(--wrappersQueueI >=0){
+					switch(wrappersQueue[wrappersQueueI]){
+						case WrappedQueueWrappers.LIST:
+							targetFieldGql= new GraphQLList(targetFieldGql);
+							break
+						case WrappedQueueWrappers.NON_NULL:
+							targetFieldGql= new GraphQLNonNull(targetFieldGql);
+							break
+						default:
+							throw new Error(`Illegal value for switch: ${wrappersQueue[wrappersQueueI]}`);		
+					}
+				}
+				//Check for resolver args
+				var fieldResolverArgs: GraphQLFieldConfigArgumentMap|undefined= undefined;
+				var argV: any= rootFieldSchema.args;
+				if(argV){
+					//* Argument
+					var argRef= argV._.ref;
+					if(argRef == null)
+						throw new Error(`Missing arg at ${currentNodeName}::${fieldKey}`);
+					argRef= _genRef(argRef, fieldKey, ObjectInOut.ARG, currentNodePath);
+					argRef+= '_Arg';
+					// Load reference
+					var argNode= _getNode(argRef, ObjectInOut.ARG);
+					fieldResolverArgs= argNode.fields as GraphQLFieldConfigArgumentMap;
+				}
+				// create field
+				if(currentNodeType=== ObjectInOut.OUTPUT)
+					(fields as GraphQLFieldConfigMap<any, any>)[fieldKey]= {
+						type:				targetFieldGql as GraphQLOutputType,
+						args:				fieldResolverArgs,
+						resolve:			rootFieldSchema.resolver as GraphQLFieldResolver<any, any, { [argName: string]: any; }>,
+						subscribe:			rootFieldSchema.subscribe as GraphQLFieldResolver<any, any, { [argName: string]: any; }>,
+						deprecationReason:	rootFieldSchema.deprecated,
+						description:		rootFieldSchema.comment
+					};
+				else if(currentNodeType === ObjectInOut.ARG)
+					(fields as GraphQLFieldConfigArgumentMap)[fieldKey]= {
+						type:				targetFieldGql as GraphQLInputType,
+						defaultValue:		rootFieldSchema.default,
+						description:		rootFieldSchema.comment,
+						deprecationReason:	rootFieldSchema.deprecated
+					}
+				else
+					(fields as GraphQLInputFieldMap)[fieldKey]= {
+						name:				rootFieldSchema.name || fieldKey,
+						type:				targetFieldGql as GraphQLInputType,
+						defaultValue:		rootFieldSchema.default,
+						description:		rootFieldSchema.comment,
+						deprecationReason:	rootFieldSchema.deprecated,
+						extensions:			undefined
+					};
+			}
+		} catch (error) {
+			throw new Error(`At: ${ObjectInOut[currentNodeType]} ${currentNodePath}\n${error instanceof Error ? error.stack: error}`)
 		}
 	}
 	// Return Graphql schema
