@@ -97,7 +97,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 						queue.push(argObj);
 						queueN.push(argK);
 						queueT.push(ObjectInOut.OUTPUT);
-						queuePath.push(currentNodePath);
+						queuePath.push(argK);
 					} else {
 						// Add to the queue
 						_addEntity(argK, argObj);
@@ -169,6 +169,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 				}
 			} else {
 				// Add to queue
+				console.log('----', refName, ref)
 				queue.push(ref);
 				queueN.push(refName);
 				queueT.push(nodeType);
