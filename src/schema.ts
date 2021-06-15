@@ -69,6 +69,9 @@ export interface FieldDescriptor{
 	subscribe?: Function
 	/** If input type is deferent from output */
 	in?:	FieldSchema
+	/** Assertion function or value */
+	assert?:	any
+	assertErr?: string
 }
 
 /** Reference field descriptor */
@@ -123,7 +126,9 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	resolver: undefined,
 	subscribe: undefined,
 	// Input format
-	in: undefined
+	in: undefined,
+	assert: undefined,
+	assertErr: undefined
 }
 
 /** Field schema */
@@ -282,6 +287,13 @@ export class FieldSchema{
 		return this;
 	}
 
+	/** Assert */
+	assert(assert: any, err?: string){
+		this._.assert= assert;
+		this._.assertErr= err;
+		return this;
+	}
+
 	/** Add argument as input */
 	input(type: FieldArgSchema){
 		if(!(type instanceof FieldSchema))
@@ -323,6 +335,7 @@ export function gt(gt: number, errMsg?: string){return new FieldSchema({gt, gtEr
 export function assertIn<T>(arr: Set<T>, errMsg?: string){return new FieldSchema({assertIn: arr, assertInErr: errMsg})}
 export function regex(regex: RegExp, errMsg?: string){return new FieldSchema({regex, regexErr: errMsg})}
 export function deprecated(reason: string){ return new FieldSchema({deprecated: reason})}
+export function assert(assert: any){ return new FieldSchema({assert})}
 
 export function length(value: number, errMsg?: string): FieldSchema
 export function length(min: number, max: number, errMsg?: string): FieldSchema
