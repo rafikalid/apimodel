@@ -169,7 +169,6 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 				}
 			} else {
 				// Add to queue
-				console.log('----', refName, ref)
 				queue.push(ref);
 				queueN.push(refName);
 				queueT.push(nodeType);
@@ -205,7 +204,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 					fields: nodeFields,
 					gql: new GraphQLObjectType({
 						fields: nodeFields as GraphQLFieldConfigMap<any, any>,
-						name: nodeName,
+						name: nodeName
 						// description: ''
 					})
 				};

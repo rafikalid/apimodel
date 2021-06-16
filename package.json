@@ -1,6 +1,6 @@
 {
   "name": "resp-model",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Best and fastest model Model Framework for REST APIs, GraphQL APIs And database access",
   "main": "dist/index.js",
   "repository": "https://github.com/rafikalid/resp-model.git",
