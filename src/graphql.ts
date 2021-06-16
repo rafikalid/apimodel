@@ -1,7 +1,8 @@
-import { GraphQLInputObjectType, GraphQLObjectType, GraphQLInputFieldConfigMap, GraphQLFieldConfigMap, GraphQLOutputType, GraphQLInputType, GraphQLString, GraphQLFloat, GraphQLBoolean, GraphQLScalarType, GraphQLEnumType, GraphQLList, GraphQLNonNull, GraphQLFieldConfigArgumentMap, GraphQLFieldResolver, GraphQLInputFieldMap, GraphQLSchema, GraphQLUnionType, GraphQLArgumentConfig, GraphQLEnumValueConfigMap } from "graphql";
+import { GraphQLInputObjectType, GraphQLObjectType, GraphQLInputFieldConfigMap, GraphQLFieldConfigMap, GraphQLOutputType, GraphQLInputType, GraphQLString, GraphQLFloat, GraphQLBoolean, GraphQLScalarType, GraphQLEnumType, GraphQLList, GraphQLNonNull, GraphQLFieldConfigArgumentMap, GraphQLFieldResolver, GraphQLInputFieldMap, GraphQLSchema, GraphQLUnionType, GraphQLArgumentConfig, GraphQLEnumValueConfigMap, isObjectType } from "graphql";
 import { ClassType, FieldSchema, FieldTypes, ObjectType, FieldListDescriptor, FieldRefDescriptor, EntityDescriptor } from "./schema";
 import { fieldSymb } from "./symbols";
 import { Union } from "./union";
+import { decoratorDescriptor, DecoratorObserver } from "./wrappers";
 
 
 /** Is output or input object */
@@ -53,6 +54,8 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 	const foundEntitiesSet: Set<any>= new Set();
 	const mappedClasses: Map<string, FoundEnitiesPrepare>= new Map();
 	var currentNodePath: string= '';
+	// Collect validation wrappers
+	const validationObservers: Map<string, Map<string, any[]>>= new Map()
 	// Add entity to class set
 	function _addEntity(name: string, entity:any): boolean{
 		if(foundEntitiesSet.has(entity))
@@ -299,7 +302,7 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 			node= _getNode(currentNodeName, currentNodeType);
 			// get map iterator
 			// var autoName= true;
-			var entityDesc: EntityDescriptor;
+			var entityDesc: EntityDescriptor|undefined;
 			if(typeof currentNode === 'function') {
 				if(!(entityDesc= (currentNode as ClassType)[fieldSymb]!))
 					throw new Error(`Missing fields on entity: ${currentNode.name}`);
@@ -315,6 +318,16 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 				if(entityDesc.comment && node.gql){ node.gql.description= entityDesc.comment; }
 			} else {
 				it= _objEntries(currentNode as Record<string, FieldSchema>);
+			}
+			// Add observer
+			var vobs;
+			if(entityDesc!=null && (vobs= (entityDesc as decoratorDescriptor).decorator)){
+				var tvobs: Map<string, any[]>;
+				tvobs= validationObservers.get(currentNodeName) ?? (validationObservers.set(currentNodeName, tvobs=new Map()), tvobs);
+				vobs.forEach((v, k)=>{
+					if(tvobs.has(k)) tvobs.get(k)!.push(...v);
+					else tvobs.set(k, v);
+				});
 			}
 			// Generate unique name
 			// if(autoName)
@@ -441,11 +454,37 @@ export function compileGqlSchema(args: Record<string, ObjectType>[]){
 		}
 	}
 	// Return Graphql schema
-	return new GraphQLSchema({
+	var schema= new GraphQLSchema({
 		query:			refMap.get('Query')?.gql as GraphQLObjectType<any, any>|undefined,
 		mutation:		refMap.get('Mutation')?.gql as GraphQLObjectType<any, any>|undefined,
 		subscription:	refMap.get('Subscription')?.gql as GraphQLObjectType<any, any>|undefined
 	});
+	// Apply decorators
+	if(validationObservers.size){
+		var tpMap= schema.getTypeMap();
+		var k;
+		for(k in tpMap){
+			var tp= tpMap[k];
+			if(tp instanceof GraphQLObjectType){
+				var tpFields= tp.getFields();
+				if(tp instanceof GraphQLObjectType &&  (vobs= validationObservers.get(k))){
+					vobs.forEach(function(v, key){
+						var i=0, len= v.length;
+						var keyType= tpFields[key];
+						var resolveCb= keyType.resolve!
+						while(i<len){
+							var obs= v[i++] as DecoratorObserver;
+							var args= v[i++] as any[];
+							resolveCb= obs.outputField(resolveCb, args, keyType, key, tp);
+						}
+						tpFields[key].resolve= resolveCb;
+					});
+				}
+			}
+		}
+	}
+	// return
+	return schema;
 }
 
 /** Get object entries iterator */

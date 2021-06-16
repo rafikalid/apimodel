@@ -1,7 +1,6 @@
 import { GraphQLEnumType, GraphQLScalarType } from "graphql";
 import { fieldSymb } from "./symbols";
 import { Union } from './union';
-import { DecoratorObserver } from "./wrappers";
 
 /** Class type */
 export interface ClassType extends Function{
@@ -73,9 +72,6 @@ export interface FieldDescriptor{
 	/** Assertion function or value */
 	assert?:	any
 	assertErr?: string
-
-	/** Save arguments for decorators */
-	decorators?: Map<DecoratorObserver<any, any, any>, any[]>
 }
 
 /** Reference field descriptor */
@@ -132,8 +128,7 @@ const FIELD_DEFAULTS: FieldDescriptor= {
 	// Input format
 	in: undefined,
 	assert: undefined,
-	assertErr: undefined,
-	decorators: undefined
+	assertErr: undefined
 }
 
 /** Field schema */
@@ -167,18 +162,8 @@ export class FieldSchema{
 		} else if(type instanceof FieldSchema){
 			var ref= type._;
 			var k: keyof FieldDescriptor;
-			var pDescorators= _.decorators;
-			var tDecorators= ref.decorators;
 			for(k in ref)
 				if(ref.hasOwnProperty(k) && typeof ref[k] !== 'undefined') _[k]= ref[k];
-			// Descorators map
-			if(pDescorators || tDecorators){
-				if(!pDescorators)
-					pDescorators= new Map(tDecorators!);
-				else if(tDecorators)
-					tDecorators.forEach((v,k)=> pDescorators!.set(k,v));
-				_.decorators= pDescorators;
-			}
 		}else if(type instanceof RegExp){
 			_.regex= type;
 			_.type= FieldTypes.REF;
@@ -321,16 +306,6 @@ export class FieldSchema{
 	name(name: string, comment?: string){
 		this._.name= name;
 		if(comment) this._.comment= comment;
-		return this;
-	}
-
-	/** Add decorator */
-	addDecorator(decorator: DecoratorObserver<any, any, any>, args: any[]){
-		var map= this._.decorators
-		if(!map){
-			this._.decorators= map= new Map();
-		}
-		map.set(decorator, args);
 		return this;
 	}
 
